@@ -1,12 +1,15 @@
-app.use(express.static('public'));
-
 const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
+const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// THIS is where this line belongs! (After the app is created)
+// We are using the "path" version just to make it completely bulletproof
+app.use(express.static(path.join(__dirname, 'public')));
 
 // 1. Authenticate with Google
 const auth = new google.auth.JWT(
@@ -66,8 +69,13 @@ app.post('/api/update-action', async (req, res) => {
   }
 });
 
-// 4. Start Server (Cloud Run automatically sets the PORT variable, usually 8080)
+// Fallback: If they go to the root URL, forcefully hand them the index.html file
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 4. Start Server 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Cloud Run server listening on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
