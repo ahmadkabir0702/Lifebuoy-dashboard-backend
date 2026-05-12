@@ -7,22 +7,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// THIS is where this line belongs! (After the app is created)
-// We are using the "path" version just to make it completely bulletproof
+// Tell the server to host all files inside the "public" folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 1. Authenticate with Google
+// 1. Secure Authentication
 const auth = new google.auth.JWT(
   process.env.CLIENT_EMAIL,
   null,
-  // This cleanly handles the multi-line private key from environment variables
   process.env.PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, ''), 
   ['https://www.googleapis.com/auth/spreadsheets']
 );
 
 const sheets = google.sheets({ version: 'v4', auth });
 
-// 2. Read Data Endpoint
+// 2. Data Read API
 app.get('/api/dashboard-data', async (req, res) => {
   try {
     const sheetNames = [
@@ -51,7 +49,7 @@ app.get('/api/dashboard-data', async (req, res) => {
   }
 });
 
-// 3. Write Data Endpoint (For the Action Modal)
+// 3. Data Write API
 app.post('/api/update-action', async (req, res) => {
   try {
     const { updateData } = req.body;
@@ -69,12 +67,12 @@ app.post('/api/update-action', async (req, res) => {
   }
 });
 
-// Fallback: If they go to the root URL, forcefully hand them the index.html file
-app.get('/', (req, res) => {
+// 4. Catch-all: Send the index.html for any unknown route
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 4. Start Server 
+// 5. Boot Server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on port ${PORT}`);
