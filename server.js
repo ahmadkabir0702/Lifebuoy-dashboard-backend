@@ -7,10 +7,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Tell the server to host all files inside the "public" folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 1. Secure Authentication
 const auth = new google.auth.JWT(
   process.env.CLIENT_EMAIL,
   null,
@@ -20,7 +18,6 @@ const auth = new google.auth.JWT(
 
 const sheets = google.sheets({ version: 'v4', auth });
 
-// 2. Data Read API
 app.get('/api/dashboard-data', async (req, res) => {
   try {
     const sheetNames = [
@@ -29,7 +26,10 @@ app.get('/api/dashboard-data', async (req, res) => {
       'Recommendation - Meta',
       'Recommendation - Tiktok',
       'Brand Say Contents',
-      'Others Say Contents'
+      'Others Say Contents',
+      'Post performance IG [Oragnic]',
+      'Post performance FB [Oragnic]',
+      'Post performance TT [Oragnic]'
     ];
 
     const requests = sheetNames.map(sheet => 
@@ -49,7 +49,6 @@ app.get('/api/dashboard-data', async (req, res) => {
   }
 });
 
-// 3. Data Write API
 app.post('/api/update-action', async (req, res) => {
   try {
     const { updateData } = req.body;
@@ -67,12 +66,10 @@ app.post('/api/update-action', async (req, res) => {
   }
 });
 
-// 4. Catch-all: Send the index.html for any unknown route
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 5. Boot Server
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on port ${PORT}`);
