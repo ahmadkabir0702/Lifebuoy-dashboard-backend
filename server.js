@@ -6,6 +6,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Add this ONE line right here!
+app.use(express.static('public'));
+
+const express = require('express');
+const cors = require('cors');
+const { google } = require('googleapis');
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
 // 1. Authenticate with Google
 const auth = new google.auth.JWT(
   process.env.CLIENT_EMAIL,
