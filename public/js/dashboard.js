@@ -24,7 +24,7 @@ let chartsInit = {};
 // ── Secure Data Load (Calls your backend instead of Google) ──
 async function loadData() {
   document.getElementById('kpi-row').innerHTML =
-    `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">⏳ Fetching secure data…</div>`;
+    `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">Fetching secure data...</div>`;
 
   try {
     const response = await fetch('/api/dashboard-data');
@@ -45,7 +45,7 @@ async function loadData() {
 
     if (ALL.length === 0) {
       document.getElementById('kpi-row').innerHTML =
-        `<div style="grid-column:1/-1;padding:20px;color:var(--c-avg)">⚠️ No creatives found.</div>`;
+        `<div style="grid-column:1/-1;padding:20px;color:var(--c-avg)">No creatives found in data.</div>`;
       return;
     }
 
@@ -53,7 +53,7 @@ async function loadData() {
     render();
   } catch(err) {
     document.getElementById('kpi-row').innerHTML =
-      `<div style="grid-column:1/-1;padding:20px;color:var(--c-poor)">❌ ${err.message}</div>`;
+      `<div style="grid-column:1/-1;padding:20px;color:var(--c-poor)">Error: ${err.message}</div>`;
     console.error(err);
   }
 }
@@ -256,7 +256,7 @@ function processContent(bsRows, osRows) {
 function enrichCreatives() {
   const contentMap = {};
   ALL_CONTENT.forEach(c => {
-    contentMap[c.id] = { isRepurposed: c.isRepurposed, originalId: c.originalId };
+    contentMap[c.id] = c; 
   });
 
   [...META, ...TT].forEach(c => {
@@ -273,9 +273,35 @@ function enrichCreatives() {
     
     if (contentMap[c.id]) {
         c.isRepurposed = contentMap[c.id].isRepurposed;
-        c.originalId   = contentMap[c.id].originalId;
+        
+        // Grab primary links for the button
+        c.creativeLink = contentMap[c.id].igLink || contentMap[c.id].ttLink || contentMap[c.id].fbLink || '';
+        
+        // Clean up the ugly originalId string
+        const rawOrig = contentMap[c.id].originalId;
+        c.originalName = rawOrig;
+        c.originalUrl = '';
+        c.extractedOrigId = null;
+
+        if (rawOrig) {
+            // Extract the URL if it exists
+            const m = rawOrig.match(/(https?:\/\/[^\s_]+)/);
+            if (m) c.originalUrl = m[1];
+            
+            // Clean up the name by removing everything after the HTTP part
+            if (rawOrig.includes('http')) {
+                c.originalName = rawOrig.split('_http')[0].replace(/_/g, ' ');
+            }
+            
+            // Try to map it directly to an ID in our system so we can open its stats
+            const parts = rawOrig.split('_');
+            if (parts.length >= 2) {
+                const potentialId = parts[0] + '_' + parts[1];
+                c.extractedOrigId = potentialId; 
+            }
+        }
     } else {
-        c.isRepurposed = false; c.originalId = '';
+        c.isRepurposed = false; c.originalName = ''; c.originalUrl = ''; c.creativeLink = '';
     }
   });
 }
@@ -425,7 +451,9 @@ function renderCards(data) {
       : `<span style="color:${d.platform==='tiktok'?'var(--c-tt)':'var(--c-meta)'};font-weight:700;font-size:10px">${d.platform==='tiktok'?'TT':'META'}</span>`;
     
     const hlValFormatted = d.holdRate >= 1000 ? (d.holdRate/1000).toFixed(1)+'K' : d.holdRate.toFixed(1);
-    const repTag = d.isRepurposed ? `<span style="background:#fef3c7;color:#b45309;padding:2px 5px;border-radius:4px;font-size:9px;font-weight:700;margin-left:4px;">♻️ REPURPOSED</span>` : '';
+    
+    // Clean repurposed tag (no emoji)
+    const repTag = d.isRepurposed ? `<span style="background:#fef3c7;color:#b45309;padding:2px 5px;border-radius:4px;font-size:9px;font-weight:700;margin-left:4px;">REPURPOSED</span>` : '';
 
     return `<div class="card ${d.id===selectedId?'selected':''}" onclick="selectCard('${d.id}')">
       <div class="card-top"><div class="card-plat"><div class="status-dot ${isAct?'status-active-dot':'status-stopped-dot'}"></div>${platHTML}</div>
@@ -441,7 +469,6 @@ function renderCards(data) {
     </div>`;
   }).join('');
 }
-
 let retChart=null, radarChart=null;
 
 function selectCard(id) {
@@ -454,6 +481,8 @@ function selectCard(id) {
 function getMetricsHTML(item, titleLabel, hookLabel) {
   if (!item) return '';
   const hlValFormatted = item.holdRate >= 1000 ? (item.holdRate/1000).toFixed(1)+'K' : item.holdRate.toFixed(1);
+  const cqrColorClass = item.cqr === 'Good' ? 'cqr-good' : (item.cqr === 'Average' ? 'cqr-avg' : 'cqr-poor');
+
   return `
     <div style="margin-bottom:12px;">
       <div style="font-size:11px;font-weight:700;color:var(--c-muted);margin-bottom:6px;text-transform:uppercase;">${titleLabel} Stats</div>
@@ -461,7 +490,7 @@ function getMetricsHTML(item, titleLabel, hookLabel) {
         <div class="dm"><div class="dm-label">Hook Rate (${hookLabel})</div><div class="dm-val" style="color:${hookColor(item.hookRate)}">${item.hookRate.toFixed(1)}%</div><div><span class="kpi-pill ${cqrClass(item.hookQual)}">${item.hookQual||'—'}</span></div></div>
         <div class="dm"><div class="dm-label">Hold Rate</div><div class="dm-val" style="color:#3b82f6">${hlValFormatted}</div><div><span class="kpi-pill ${cqrClass(item.holdQual)}">${item.holdQual||'—'}</span></div></div>
         <div class="dm"><div class="dm-label">Spend</div><div class="dm-val">${fmt(item.spend)}</div><div style="font-size:10px;color:var(--c-muted);margin-top:2px;">Reach: ${fmtN(item.reach)}</div></div>
-        <div class="dm"><div class="dm-label">Avg Watch Time</div><div class="dm-val">${item.watchTime.toFixed(1)}s</div><div><span class="kpi-pill ${cqrClass(item.cqr)}">CQR: ${item.cqr||'—'}</span></div></div>
+        <div class="dm"><div class="dm-label">CQR Rating</div><div class="dm-val big-cqr ${cqrColorClass}">${item.cqr||'—'}</div></div>
       </div>
     </div>`;
 }
@@ -471,12 +500,12 @@ function getRecHTML(item, titleLabel) {
   if (item.recommendation) {
       const isActioned = item.actionStatus && item.actionStatus.toLowerCase() === 'actioned';
       let actionBadge = isActioned 
-        ? `<div class="sheet-rec-action">✅ Actioned by ${item.actionBy||'Unknown'} on ${item.actionDate||'Date unknown'} (${item.agency||'Agency unassigned'})</div>`
-        : `<div class="sheet-rec-action" style="color:#b45309">⏳ Pending action (${item.agency||'Agency unassigned'}) <button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button></div>`;
+        ? `<div class="sheet-rec-action">Actioned by ${item.actionBy||'Unknown'} on ${item.actionDate||'Date unknown'} (${item.agency||'Agency unassigned'})</div>`
+        : `<div class="sheet-rec-action" style="color:#b45309">Pending action (${item.agency||'Agency unassigned'}) <button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button></div>`;
       
-      return `<div class="sheet-rec"><div class="sheet-rec-icon">📋</div><div class="sheet-rec-content"><div class="sheet-rec-label">${titleLabel} Live Recommendation</div><div class="sheet-rec-text">${item.recommendation}</div>${actionBadge}</div></div>`;
+      return `<div class="sheet-rec"><div class="sheet-rec-content"><div class="sheet-rec-label">${titleLabel} Live Recommendation</div><div class="sheet-rec-text">${item.recommendation}</div>${actionBadge}</div></div>`;
   } else {
-      return `<div class="sheet-rec" style="opacity: 0.6; border-color: var(--c-border); background: var(--c-surface);"><div class="sheet-rec-icon">📋</div><div class="sheet-rec-content"><div class="sheet-rec-label" style="color: var(--c-muted);">${titleLabel} Live Recommendation</div><div class="sheet-rec-text" style="color: var(--c-muted);">No recommendation provided.</div></div></div>`;
+      return `<div class="sheet-rec" style="opacity: 0.6; border-color: var(--c-border); background: var(--c-surface);"><div class="sheet-rec-content"><div class="sheet-rec-label" style="color: var(--c-muted);">${titleLabel} Live Recommendation</div><div class="sheet-rec-text" style="color: var(--c-muted);">No recommendation provided.</div></div></div>`;
   }
 }
 
@@ -494,12 +523,41 @@ function renderDetail(d) {
       recsHTML = getRecHTML(d, label);
   }
 
-  const repText = d.isRepurposed && d.originalId ? `<div style="font-size:11px; color:#d97706; font-weight:600; margin-top:4px;">♻️ Repurposed from: ${d.originalId}</div>` : '';
+  // Clean repurposed text
+  const repText = d.isRepurposed && d.originalName 
+    ? `<div style="font-size:11px; color:var(--c-muted); font-weight:600; margin-top:6px;">
+         Original Asset: <span style="color:var(--c-text);">${d.originalName}</span>
+       </div>` 
+    : '';
+
+  // Generate dynamic View buttons
+  let linkBtns = `<div class="btn-group">`;
+  
+  // 1. Primary "View Creative" button
+  if (d.creativeLink || d.originalUrl) {
+     const targetUrl = d.creativeLink || d.originalUrl;
+     linkBtns += `<button class="view-btn primary" onclick="window.open('${targetUrl}', '_blank')">View Creative ↗</button>`;
+  }
+  
+  // 2. "View Stats" button for Repurposed content
+  if (d.isRepurposed) {
+      if (d.extractedOrigId && ALL.find(x => x.id === d.extractedOrigId)) {
+          linkBtns += `<button class="view-btn" onclick="selectCard('${d.extractedOrigId}')">View Original Stats</button>`;
+      } else if (d.originalUrl) {
+          linkBtns += `<button class="view-btn" onclick="window.open('${d.originalUrl}', '_blank')">Original Link ↗</button>`;
+      }
+  }
+  linkBtns += `</div>`;
 
   document.getElementById('detail-area').innerHTML=`
     <div class="detail-panel">
       <div class="detail-header">
-        <div><div class="detail-title">${d.short}<span class="card-type ${d.type==='Brand Say'?'bs-tag':'os-tag'}" style="font-size:11px;padding:3px 8px;margin-left:6px">${d.type}</span></div><div class="detail-meta">${platLabel} · ${d.campaign} · ${d.month}</div>${repText}</div>
+        <div>
+           <div class="detail-title">${d.short}<span class="card-type ${d.type==='Brand Say'?'bs-tag':'os-tag'}" style="font-size:11px;padding:3px 8px;margin-left:6px">${d.type}</span></div>
+           <div class="detail-meta">${platLabel} · ${d.campaign} · ${d.month}</div>
+           ${repText}
+           ${linkBtns}
+        </div>
         <button class="close-btn" onclick="selectCard('${d.id}')">×</button>
       </div>
       ${statsHTML}${recsHTML}
