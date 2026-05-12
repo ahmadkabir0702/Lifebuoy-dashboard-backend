@@ -129,3 +129,14 @@ select { background: var(--c-surface); border: 1px solid var(--c-border); border
 .content-table-row:nth-child(even) { background: var(--c-bg); }
 .paid-badge { background: #dcfce7; color: #15803d; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; }
 .organic-badge { background: #e0f2fe; color: #0369a1; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+
+/* New professional buttons & Big CQR */
+.btn-group { display: flex; gap: 8px; margin-top: 12px; }
+.view-btn { padding: 6px 14px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s; border: 1px solid var(--c-border); background: var(--c-surface); color: var(--c-text); font-family: inherit; }
+.view-btn:hover { background: var(--c-bg); border-color: var(--c-muted); }
+.view-btn.primary { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+.view-btn.primary:hover { background: #1d4ed8; }
+.big-cqr { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+.cqr-good { color: #15803d; } 
+.cqr-avg { color: #b45309; } 
+.cqr-poor { color: #b91c1c; }
