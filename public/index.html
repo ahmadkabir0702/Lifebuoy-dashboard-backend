@@ -30,11 +30,6 @@
       </div>
       <div class="nav-section">Analytics</div>
       <div class="nav-item active" onclick="setNav('creatives',this)"><div class="dot" style="background:var(--c-accent)"></div>Creative Hub</div>
-      <div class="nav-item" onclick="setNav('content',this)"><div class="dot" style="background:#f59e0b"></div>Content Overview</div>
-      <div class="nav-item" onclick="setNav('overview',this)"><div class="dot" style="background:#7c3aed"></div>Overview</div>
-      <div class="nav-section">Channels</div>
-      <div class="nav-item" onclick="setNav('meta',this)"><div class="dot" style="background:var(--c-meta)"></div>Meta Paid</div>
-      <div class="nav-item" onclick="setNav('tiktok',this)"><div class="dot" style="background:var(--c-tt)"></div>TikTok Paid</div>
       <div class="nav-section">Reporting</div>
       <div class="nav-item" onclick="setNav('kpi',this)"><div class="dot" style="background:#10b981"></div>Campaign KPIs</div>
     </div>
@@ -56,6 +51,11 @@
             <option value="all">All validation</option>
             <option value="validated">Validated</option>
             <option value="not_validated">Not Validated</option>
+          </select>
+          <select id="action-filter" onchange="render()">
+            <option value="all">All action status</option>
+            <option value="actioned">Actioned</option>
+            <option value="not_actioned">Not Actioned</option>
           </select>
           <select id="status-filter" onchange="render()">
             <option value="all">All Ad Status</option>
@@ -88,27 +88,6 @@
             </div>
           </div>
           <div class="card-grid" id="card-grid"></div>
-        </div>
-
-        <div id="page-content" class="hidden"></div>
-        
-        <div id="page-overview" class="hidden">
-          <div class="overview-charts">
-            <div class="chart-card"><div class="chart-card-title">Hook Rate — Meta vs TikTok</div><div class="chart-container" style="height:200px"><canvas id="hookDist"></canvas></div></div>
-            <div class="chart-card"><div class="chart-card-title">CQR Breakdown by Platform</div><div class="chart-container" style="height:200px"><canvas id="cqrChart"></canvas></div></div>
-            <div class="chart-card"><div class="chart-card-title">Brand Say vs Others Say</div><div class="chart-container" style="height:200px"><canvas id="typeChart"></canvas></div></div>
-            <div class="chart-card"><div class="chart-card-title">Spend vs Hook Rate (Meta)</div><div class="chart-container" style="height:200px"><canvas id="scatterChart"></canvas></div></div>
-          </div>
-        </div>
-        
-        <div id="page-meta" class="hidden">
-          <div class="kpi-row" id="meta-kpi-row"></div>
-          <div class="chart-card" style="margin-bottom:12px"><div class="chart-card-title">Top Meta Creatives — Hook Rate vs Hold Rate</div><div class="chart-container" style="height:320px"><canvas id="metaBarChart"></canvas></div></div>
-        </div>
-        
-        <div id="page-tiktok" class="hidden">
-          <div class="kpi-row" id="tt-kpi-row"></div>
-          <div class="chart-card" style="margin-bottom:12px"><div class="chart-card-title">Top TikTok Creatives — Hook Rate vs Hold Rate</div><div class="chart-container" style="height:300px"><canvas id="ttBarChart"></canvas></div></div>
         </div>
 
         <div id="page-kpi" class="hidden"></div>
