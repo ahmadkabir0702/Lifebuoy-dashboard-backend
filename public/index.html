@@ -35,6 +35,8 @@
       <div class="nav-section">Channels</div>
       <div class="nav-item" onclick="setNav('meta',this)"><div class="dot" style="background:var(--c-meta)"></div>Meta Paid</div>
       <div class="nav-item" onclick="setNav('tiktok',this)"><div class="dot" style="background:var(--c-tt)"></div>TikTok Paid</div>
+      <div class="nav-section">Reporting</div>
+      <div class="nav-item" onclick="setNav('kpi',this)"><div class="dot" style="background:#10b981"></div>Campaign KPIs</div>
     </div>
 
     <div class="main">
@@ -49,6 +51,12 @@
           </div>
           <select id="campaign-filter" onchange="render()"><option value="all">All campaigns</option></select>
           <select id="month-filter" onchange="render()"><option value="all">All months</option></select>
+          <select id="content-type-filter" onchange="render()"><option value="all">All content types</option></select>
+          <select id="validation-filter" onchange="render()">
+            <option value="all">All validation</option>
+            <option value="validated">Validated</option>
+            <option value="not_validated">Not Validated</option>
+          </select>
           <select id="status-filter" onchange="render()">
             <option value="all">All Ad Status</option>
             <option value="ACTIVE">Active Ads</option>
@@ -102,6 +110,8 @@
           <div class="kpi-row" id="tt-kpi-row"></div>
           <div class="chart-card" style="margin-bottom:12px"><div class="chart-card-title">Top TikTok Creatives — Hook Rate vs Hold Rate</div><div class="chart-container" style="height:300px"><canvas id="ttBarChart"></canvas></div></div>
         </div>
+
+        <div id="page-kpi" class="hidden"></div>
       </div>
     </div>
   </div>
