@@ -586,11 +586,19 @@ function getData() {
   const sf      = (document.getElementById('status-filter')       || {}).value || 'all';
   const vf      = (document.getElementById('validation-filter')   || {}).value || 'all';
   const ctf     = (document.getElementById('content-type-filter') || {}).value || 'all';
+  const af      = (document.getElementById('action-filter')       || {}).value || 'all';
 
   if (tf !== 'all')   data = data.filter(d => d.type === tf);
   if (mf !== 'all')   data = data.filter(d => d.month === mf);
   if (campf !== 'all') data = data.filter(d => d.campaign === campf);
   if (ctf !== 'all')  data = data.filter(d => d.contentType === ctf);
+  if (af === 'actioned') {
+    data = data.filter(d => d.actionStatus && d.actionStatus.toLowerCase() === 'actioned');
+  }
+  if (af === 'not_actioned') {
+    // This will only show creatives that actually have a recommendation but haven't been actioned yet
+    data = data.filter(d => d.recommendation && (!d.actionStatus || d.actionStatus.toLowerCase() !== 'actioned'));
+  }
 
   if (sf === 'ACTIVE')               data = data.filter(d => d.adStatus === 'ACTIVE');
   if (sf === 'STOPPED')              data = data.filter(d => d.adStatus === 'STOPPED');
