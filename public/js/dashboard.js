@@ -592,12 +592,28 @@ function getData() {
   if (mf !== 'all')   data = data.filter(d => d.month === mf);
   if (campf !== 'all') data = data.filter(d => d.campaign === campf);
   if (ctf !== 'all')  data = data.filter(d => d.contentType === ctf);
-  if (af === 'actioned') {
-    data = data.filter(d => d.actionStatus && d.actionStatus.toLowerCase() === 'actioned');
+if (af === 'actioned') {
+    data = data.filter(d => {
+      const actRoot = d.actionStatus ? d.actionStatus.toLowerCase() : '';
+      const actMeta = (d._meta && d._meta.actionStatus) ? d._meta.actionStatus.toLowerCase() : '';
+      const actTt   = (d._tt && d._tt.actionStatus) ? d._tt.actionStatus.toLowerCase() : '';
+      return actRoot === 'actioned' || actMeta === 'actioned' || actTt === 'actioned';
+    });
   }
+  
   if (af === 'not_actioned') {
-    // This will only show creatives that actually have a recommendation but haven't been actioned yet
-    data = data.filter(d => d.recommendation && (!d.actionStatus || d.actionStatus.toLowerCase() !== 'actioned'));
+    data = data.filter(d => {
+      // Check if there's a recommendation anywhere
+      const hasRec  = d.recommendation || (d._meta && d._meta.recommendation) || (d._tt && d._tt.recommendation);
+      
+      // Check if it's been actioned anywhere
+      const actRoot = d.actionStatus ? d.actionStatus.toLowerCase() : '';
+      const actMeta = (d._meta && d._meta.actionStatus) ? d._meta.actionStatus.toLowerCase() : '';
+      const actTt   = (d._tt && d._tt.actionStatus) ? d._tt.actionStatus.toLowerCase() : '';
+      const isActed = actRoot === 'actioned' || actMeta === 'actioned' || actTt === 'actioned';
+      
+      return hasRec && !isActed;
+    });
   }
 
   if (sf === 'ACTIVE')               data = data.filter(d => d.adStatus === 'ACTIVE');
