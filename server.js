@@ -21,7 +21,7 @@ const sheets = google.sheets({ version: 'v4', auth });
 app.get('/api/dashboard-data', async (req, res) => {
   try {
     // Exact tab names matching your Excel file uploads
-    const sheetNames = [
+const sheetNames = [
       'Post performance Meta [Paid]',
       'Post performance TT [Paid]',
       'Recommendation - Meta',
@@ -30,7 +30,8 @@ app.get('/api/dashboard-data', async (req, res) => {
       'Others Say Contents',
       'Post performance IG [Oragnic]',
       'Post performance FB [Oragnic]',
-      'Post performance TT [Oragnic]'
+      'Post performance TT [Oragnic]',
+      'Account Overview' // <-- ADD THIS
     ];
 
     const requests = sheetNames.map(sheet => 
