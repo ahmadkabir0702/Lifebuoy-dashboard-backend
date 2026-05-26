@@ -390,8 +390,14 @@ function processContent(bsRows, osRows) {
         saves: parseNum(row[h['FBSaves']]), cqr: ''
       } : null;
 
+      // ... existing ttViews, igViews, fbViews logic ...
+      
+      // Add the short name generation
+      const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
+      const shortName = m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : id;
+
       ALL_CONTENT.push({
-        id, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
+        id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
         type: 'Others Say', month: getMonthFromId(id), isPaid: PAID_IDS.has(id),
         igLink: String(row[h['IG']]||''), fbLink: String(row[h['FB']]||''), ttLink: String(row[h['TT']]||''),
         isRepurposed: isRep, originalId: String(row[h['Original Creative ID']] || '').trim(),
@@ -667,8 +673,8 @@ function renderCards(data) {
         <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;justify-content:flex-end">
           <span class="card-type ${d.type==='Brand Say'?'bs-tag':'os-tag'}">${d.type==='Brand Say'?'BS':'OS'}</span>${repTag}
         </div>
-      </div>
-      <div class="card-name">${d.short}</div>
+    </div>
+      <div class="card-name">${d.short || d.id}</div>
       <div class="card-campaign">${d.campaign} · ${d.month}</div>
       <div class="card-tags">${durTag}${ctTag}${valTag}</div>
       <div class="mini-bars">
