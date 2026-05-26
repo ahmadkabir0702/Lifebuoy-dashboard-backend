@@ -310,13 +310,18 @@ function processContent(bsRows, osRows) {
     const headers = bsRows[0].map(h => String(h).trim().toLowerCase());
     const h = {};
     commonHeaders(headers, h);
-    bsRows.slice(1).forEach(row => {
+  bsRows.slice(1).forEach(row => {
       const id = String(row[h['Creative ID']] || '').trim();
       if (!id || !id.startsWith('Lifebuoy')) return;
       const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
       const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
+      
+      // Add the short name generation
+      const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
+      const shortName = m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : id;
+
       ALL_CONTENT.push({
-        id, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
+        id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
         type: 'Brand Say', month: getMonthFromId(id), isPaid: PAID_IDS.has(id),
         igLink: String(row[h['IG']]||''), fbLink: String(row[h['FB']]||''), ttLink: String(row[h['TT']]||''),
         isRepurposed: isRep, originalId: String(row[h['Original Creative ID']] || '').trim(),
