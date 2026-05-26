@@ -429,8 +429,8 @@ function parseAccountOverview(rows) {
     if (name === 'kpifrequency') h['KpiFrequency'] = i;
   });
 
-  const seen = new Set();
-  return rows.slice(1).map(row => {
+const seen = new Set();
+  return rows.slice(2).map(row => {
     const actMonth = String(row[h['ActMonth']] || '').trim();
     if (!actMonth || seen.has(actMonth)) return null;
     seen.add(actMonth);
