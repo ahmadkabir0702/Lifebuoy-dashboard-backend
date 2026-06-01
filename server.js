@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
 const path = require('path');
+const fs = require('fs'); // ADD THIS
+const youtubedl = require('youtube-dl-exec'); // ADD THIS
+const { GoogleGenAI } = require('@google/genai'); // ADD THIS
 
 const app = express();
 app.use(cors());
