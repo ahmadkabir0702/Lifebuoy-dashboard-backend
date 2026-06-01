@@ -549,6 +549,11 @@ function setNav(page, el) {
   document.getElementById('page-'+page).classList.remove('hidden');
   document.getElementById('topbar-title').textContent =
     {creatives:'Creative Hub',kpi:'Campaign KPIs'}[page]||page;
+    document.getElementById('page-creatives').style.display = pageId === 'creatives' ? 'block' : 'none';
+    document.getElementById('page-kpi').style.display = pageId === 'kpi' ? 'block' : 'none';
+    
+    // ADD THIS LINE:
+    if (pageId === 'kpi') renderKPIDashboard();
   
   render(); // Trigger a re-render so filters apply immediately to the active tab
 }
