@@ -19,6 +19,30 @@
          <button class="modal-btn modal-cancel" onclick="closeActionModal()">Cancel</button>
          <button class="modal-btn modal-confirm" id="modalConfirmBtn" onclick="confirmAction()">Confirm</button>
        </div>
+      <div id="addCreativeModal" class="modal-overlay">
+    <div class="modal-box" style="width: 450px;">
+       <h3 class="modal-title">Add New Creative</h3>
+       <form id="addCreativeForm" onsubmit="submitCreative(event)">
+           <input type="date" id="ac-date" class="modal-input" style="margin-bottom:10px;" required>
+           <input type="text" id="ac-campaign" class="modal-input" style="margin-bottom:10px;" placeholder="Campaign Name (e.g. Cool Fresh)" required>
+           
+           <select id="ac-type" class="modal-input" style="margin-bottom:10px;" required>
+             <option value="" disabled selected>Select Type</option>
+             <option value="Brand Say">Brand Say</option>
+             <option value="Others Say">Others Say</option>
+           </select>
+           
+           <input type="text" id="ac-ig" class="modal-input" style="margin-bottom:10px;" placeholder="IG Link">
+           <input type="text" id="ac-fb" class="modal-input" style="margin-bottom:10px;" placeholder="FB Link">
+           <input type="text" id="ac-tt" class="modal-input" style="margin-bottom:10px;" placeholder="TikTok Link">
+           
+           <div class="modal-actions" style="margin-top: 15px;">
+             <button type="button" class="modal-btn modal-cancel" onclick="closeAddCreativeModal()">Cancel</button>
+             <button type="submit" class="modal-btn modal-confirm">Add to Sheet</button>
+           </div>
+       </form>
+    </div>
+  </div>
     </div>
   </div>
 
@@ -30,8 +54,11 @@
       </div>
       <div class="nav-section">Analytics</div>
       <div class="nav-item active" onclick="setNav('creatives',this)"><div class="dot" style="background:var(--c-accent)"></div>Creative Hub</div>
-      <div class="nav-section">Reporting</div>
+    <div class="nav-section">Reporting</div>
       <div class="nav-item" onclick="setNav('kpi',this)"><div class="dot" style="background:#10b981"></div>Campaign KPIs</div>
+      
+      <div class="nav-section">Actions</div>
+      <div class="nav-item" onclick="openAddCreativeModal()"><div class="dot" style="background:#3b82f6"></div>Add Creative</div>
     </div>
 
     <div class="main">
