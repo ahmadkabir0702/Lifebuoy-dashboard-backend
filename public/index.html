@@ -172,6 +172,7 @@
             </div>
           </div>
 
+       <!-- Section 2: Content Breakdown -->
           <h2 class="section-title">2. Content Pipeline & Duration Insights</h2>
           <div class="kpi-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
             <div class="stat-card" style="border-left: 4px solid #8b5cf6;">
@@ -190,39 +191,53 @@
           
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
             <div class="stat-card">
-              <h3 style="margin-top:0; font-size:14px; color:#475569;">Performance Head-to-Head</h3>
-              <canvas id="chart-head-to-head" height="200"></canvas>
+              <h3 style="margin:0; font-size:14px; color:#475569;">Performance Head-to-Head</h3>
+              <div class="chart-wrapper">
+                <canvas id="chart-head-to-head"></canvas>
+              </div>
             </div>
             <div class="stat-card">
-              <h3 style="margin-top:0; font-size:14px; color:#475569;">Duration Insights: Hold Rate %</h3>
-              <canvas id="chart-duration" height="200"></canvas>
+              <h3 style="margin:0; font-size:14px; color:#475569;">Duration Insights: Hold Rate %</h3>
+              <div class="chart-wrapper">
+                <canvas id="chart-duration"></canvas>
+              </div>
             </div>
           </div>
 
+          <!-- Section 3: Creator Insights -->
           <h2 class="section-title">3. Creator Insights (Based on CQR & Retention)</h2>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
             <div class="stat-card">
-              <h3 style="margin-top:0; font-size:14px; color:#475569;">Creator Consistency (Volume vs CQR Score)</h3>
-              <canvas id="chart-creator-scatter" height="250"></canvas>
+              <h3 style="margin:0; font-size:14px; color:#475569;">Creator Consistency (Volume vs CQR Score)</h3>
+              <div class="chart-wrapper">
+                <canvas id="chart-creator-scatter"></canvas>
+              </div>
             </div>
             <div class="stat-card">
-              <h3 style="margin-top:0; font-size:14px; color:#475569;">Retention Champions (Avg Watch Time)</h3>
-              <canvas id="chart-creator-retention" height="250"></canvas>
+              <h3 style="margin:0; font-size:14px; color:#475569;">Retention Champions (Avg Watch Time)</h3>
+              <div class="chart-wrapper">
+                <canvas id="chart-creator-retention"></canvas>
+              </div>
             </div>
           </div>
 
+          <!-- Section 4: Paid Platform Efficiency -->
           <h2 class="section-title">4. Paid Platform Efficiency (Meta vs TikTok)</h2>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px;">
             <div class="stat-card">
-              <h3 style="margin-top:0; font-size:14px; color:#475569;">Cost per 1,000 Reach (CPR)</h3>
-              <canvas id="chart-paid-cost" height="150"></canvas>
+              <h3 style="margin:0; font-size:14px; color:#475569;">Cost per 1,000 Reach (CPR)</h3>
+              <div class="chart-wrapper">
+                <canvas id="chart-paid-cost"></canvas>
+              </div>
             </div>
             <div class="stat-card">
-              <h3 style="margin-top:0; font-size:14px; color:#475569;">Attention: VTR %</h3>
-              <canvas id="chart-paid-attention" height="150"></canvas>
+              <h3 style="margin:0; font-size:14px; color:#475569;">Attention: VTR %</h3>
+              <div class="chart-wrapper">
+                <canvas id="chart-paid-attention"></canvas>
+              </div>
             </div>
           </div>
-
+          
         </div>
       </div>
     </div>
