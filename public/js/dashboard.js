@@ -542,20 +542,21 @@ function populateFilters() {
 }
 
 function setNav(page, el) {
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   currentPage = page;
-  document.querySelectorAll('[id^=page-]').forEach(p=>p.classList.add('hidden'));
-  document.getElementById('page-'+page).classList.remove('hidden');
-  document.getElementById('topbar-title').textContent =
-    {creatives:'Creative Hub',kpi:'Campaign KPIs'}[page]||page;
-    document.getElementById('page-creatives').style.display = pageId === 'creatives' ? 'block' : 'none';
-    document.getElementById('page-kpi').style.display = pageId === 'kpi' ? 'block' : 'none';
-    
-    // ADD THIS LINE:
-    if (pageId === 'kpi') renderKPIDashboard();
   
-  render(); // Trigger a re-render so filters apply immediately to the active tab
+  if(page === 'creatives') {
+    document.getElementById('page-creatives').classList.remove('hidden');
+    document.getElementById('page-kpi').classList.add('hidden');
+    document.getElementById('topbar-title').innerText = "Creative Hub";
+  } else if(page === 'kpi') {
+    document.getElementById('page-creatives').classList.add('hidden');
+    document.getElementById('page-kpi').classList.remove('hidden');
+    document.getElementById('topbar-title').innerText = "Campaign KPIs";
+    // Fires off your newly updated fallback renderer pipeline
+    renderKPIDashboard();
+  }
 }
 
 function setPlatform(p, el) {
