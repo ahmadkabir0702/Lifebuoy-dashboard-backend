@@ -1194,4 +1194,53 @@ async function confirmAction() {
   }
 }
 
+// --- Add Creative Feature ---
+function openAddCreativeModal() {
+  document.getElementById('addCreativeModal').style.display = 'flex';
+}
+
+function closeAddCreativeModal() {
+  document.getElementById('addCreativeModal').style.display = 'none';
+  document.getElementById('addCreativeForm').reset();
+}
+
+async function submitCreative(e) {
+  e.preventDefault();
+  
+  const campaign = document.getElementById('ac-campaign').value;
+  const type = document.getElementById('ac-type').value;
+  const date = document.getElementById('ac-date').value;
+  const ig = document.getElementById('ac-ig').value;
+  const fb = document.getElementById('ac-fb').value;
+  const tt = document.getElementById('ac-tt').value;
+
+  const btn = e.target.querySelector('.modal-confirm');
+  btn.innerText = "Adding...";
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/add-creative', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt })
+    });
+    
+    const result = await res.json();
+    if (result.success) {
+      alert('Creative added successfully! New ID: ' + result.creativeId);
+      closeAddCreativeModal();
+      // Reload the page to fetch the newly added data
+      location.reload(); 
+    } else {
+      alert('Failed to add creative: ' + (result.error || 'Unknown error'));
+    }
+  } catch (err) {
+    console.error(err);
+    alert('An error occurred while connecting to the server.');
+  } finally {
+    btn.innerText = "Add to Sheet";
+    btn.disabled = false;
+  }
+}
+
 loadData();
