@@ -1271,9 +1271,17 @@ async function submitCreative(e) {
   const repurposed = document.getElementById('ac-repurposed').value || "No";
   const originalId = document.getElementById('ac-original-id').value || "";
 
-  const btn = e.target.querySelector('.modal-confirm');
-  btn.innerText = "Adding...";
-  btn.disabled = true;
+  const btnConfirm = document.getElementById('ac-confirm-btn');
+  const btnCancel = document.getElementById('ac-cancel-btn');
+  const progressContainer = document.getElementById('ac-progress-container');
+  const progressText = document.getElementById('ac-progress-text');
+
+  // Lock the UI
+  btnConfirm.disabled = true;
+  btnCancel.disabled = true;
+  document.getElementById('addCreativeModal').style.pointerEvents = 'none'; // Prevents clicking the background to close
+  progressContainer.style.display = 'block';
+  progressText.innerText = "Downloading video & generating AI analysis... (This can take up to 60 seconds)";
 
   try {
     const res = await fetch('/api/add-creative', {
@@ -1284,19 +1292,28 @@ async function submitCreative(e) {
     
     const result = await res.json();
     if (result.success) {
-      alert('Creative added successfully! New ID: ' + result.creativeId);
-      closeAddCreativeModal();
-      location.reload(); 
+      progressText.innerText = "✅ Success! Sheet has been updated.";
+      setTimeout(() => {
+          closeAddCreativeModal();
+          location.reload(); 
+      }, 1500);
     } else {
       alert('Failed to add creative: ' + (result.error || 'Unknown error'));
+      resetSubmitUI();
     }
   } catch (err) {
     console.error(err);
-    alert('An error occurred while connecting to the server.');
-  } finally {
-    btn.innerText = "Add to Sheet";
-    btn.disabled = false;
+    alert('An error occurred while connecting to the server. The download may have timed out.');
+    resetSubmitUI();
   }
+}
+
+// Helper to reset the modal if there's an error
+function resetSubmitUI() {
+    document.getElementById('ac-confirm-btn').disabled = false;
+    document.getElementById('ac-cancel-btn').disabled = false;
+    document.getElementById('ac-progress-container').style.display = 'none';
+    document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
 loadData();
