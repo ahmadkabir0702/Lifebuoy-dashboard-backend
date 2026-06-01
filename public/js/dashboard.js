@@ -1197,11 +1197,66 @@ async function confirmAction() {
 // --- Add Creative Feature ---
 function openAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'flex';
+  
+  // 1. Dynamically Populate Campaigns Dropdown from existing data
+  const campaignSelect = document.getElementById('ac-campaign');
+  const campaigns = [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))];
+  
+  campaignSelect.innerHTML = '<option value="" disabled selected>Select Campaign</option>';
+  campaigns.forEach(c => {
+    campaignSelect.innerHTML += `<option value="${c}">${c}</option>`;
+  });
+
+  // 2. Dynamically Populate Original Creative IDs Dropdown
+  const orgIdSelect = document.getElementById('ac-original-id');
+  const creativeIds = [...new Set(ALL_CONTENT.map(c => c.id).filter(id => id))];
+  
+  orgIdSelect.innerHTML = '<option value="" disabled selected>Select Original Creative ID</option>';
+  creativeIds.forEach(id => {
+    orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`;
+  });
 }
 
 function closeAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'none';
   document.getElementById('addCreativeForm').reset();
+  toggleCreativeFields(); // Reset field visibility
+}
+
+// Show/Hide 'Is Repurposed' based on Category
+function toggleCreativeFields() {
+  const type = document.getElementById('ac-type').value;
+  const repurposedSelect = document.getElementById('ac-repurposed');
+  const originalIdSelect = document.getElementById('ac-original-id');
+
+  if (type === 'Brand Say') {
+    repurposedSelect.style.display = 'block';
+    repurposedSelect.required = true;
+  } else {
+    // Hide and clear if 'Others Say'
+    repurposedSelect.style.display = 'none';
+    repurposedSelect.required = false;
+    repurposedSelect.value = "";
+    
+    originalIdSelect.style.display = 'none';
+    originalIdSelect.required = false;
+    originalIdSelect.value = "";
+  }
+}
+
+// Show/Hide 'Original ID' based on 'Is Repurposed'
+function toggleOriginalIdField() {
+  const repurposed = document.getElementById('ac-repurposed').value;
+  const originalIdSelect = document.getElementById('ac-original-id');
+
+  if (repurposed === 'Yes') {
+    originalIdSelect.style.display = 'block';
+    originalIdSelect.required = true;
+  } else {
+    originalIdSelect.style.display = 'none';
+    originalIdSelect.required = false;
+    originalIdSelect.value = "";
+  }
 }
 
 async function submitCreative(e) {
@@ -1213,6 +1268,8 @@ async function submitCreative(e) {
   const ig = document.getElementById('ac-ig').value;
   const fb = document.getElementById('ac-fb').value;
   const tt = document.getElementById('ac-tt').value;
+  const repurposed = document.getElementById('ac-repurposed').value || "No";
+  const originalId = document.getElementById('ac-original-id').value || "";
 
   const btn = e.target.querySelector('.modal-confirm');
   btn.innerText = "Adding...";
@@ -1222,14 +1279,13 @@ async function submitCreative(e) {
     const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt })
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId })
     });
     
     const result = await res.json();
     if (result.success) {
       alert('Creative added successfully! New ID: ' + result.creativeId);
       closeAddCreativeModal();
-      // Reload the page to fetch the newly added data
       location.reload(); 
     } else {
       alert('Failed to add creative: ' + (result.error || 'Unknown error'));
