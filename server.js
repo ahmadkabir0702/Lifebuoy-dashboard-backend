@@ -20,30 +20,84 @@ const auth = new google.auth.JWT(
 );
 
 const sheets = google.sheets({ version: 'v4', auth });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }); // Ensure GEMINI_API_KEY is in your system or .env
 
 app.post('/api/add-creative', async (req, res) => {
+  const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
+  const safeCampaignName = campaign.replace(/\s+/g, '');
+  const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
+  
+  // Prioritize downloading from IG, then TT, then FB
+  const videoLinkToDownload = ig || tt || fb; 
+  
+  let hook = "", seg1 = "", seg2 = "", seg3 = "", seg4 = "";
+  let videoPath = null;
+  let geminiFile = null;
+
   try {
-    const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
-    
-    const safeCampaignName = campaign.replace(/\s+/g, '');
-    const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
-    
+    // Phase 1: Try to download and analyze the video if a link exists
+    if (videoLinkToDownload) {
+        console.log(`Downloading video from: ${videoLinkToDownload}`);
+        videoPath = path.join(__dirname, `temp_video_${Date.now()}.mp4`);
+        
+        try {
+            await youtubedl(videoLinkToDownload, { output: videoPath, format: 'mp4' });
+            
+            console.log(`Uploading to Gemini...`);
+            geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+            
+            // Wait for Google's servers to process the video stream
+            let fileState = await ai.files.get({ name: geminiFile.name });
+            while (fileState.state === 'PROCESSING') {
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                fileState = await ai.files.get({ name: geminiFile.name });
+            }
+            
+            if (fileState.state !== 'FAILED') {
+                console.log(`Generating AI Breakdown...`);
+                const prompt = `
+                Watch this video. Extract the following:
+                1. A catchy 'Content Hook' (a 1-sentence summary of the visual hook).
+                2. Description of the 1st Segment (0-25% of the video).
+                3. Description of the 2nd Segment (25-50% of the video).
+                4. Description of the 3rd Segment (50-75% of the video).
+                5. Description of the 4th Segment (75-100% of the video).
+                
+                Return the exact output as a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". Do not use markdown code blocks.
+                `;
+
+                const result = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: [{ role: 'user', parts: [{ fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } }, { text: prompt }] }],
+                    config: { responseMimeType: "application/json" }
+                });
+
+                const analysisData = JSON.parse(result.text);
+                hook = analysisData.hook || "";
+                seg1 = analysisData.seg1 || "";
+                seg2 = analysisData.seg2 || "";
+                seg3 = analysisData.seg3 || "";
+                seg4 = analysisData.seg4 || "";
+                console.log("AI Analysis Successful.");
+            }
+        } catch (downloadOrAiError) {
+            console.error("AI/Download Pipeline Failed. Proceeding to add row without AI descriptions.", downloadOrAiError);
+            // We swallow this error so it doesn't crash the sheet insertion if TikTok blocks the download.
+        }
+    }
+
+    // Phase 2: Add to Google Sheets
     let sheetName = '';
     let rowData = [];
 
-    // NOTE: Passing 'null' into the array tells the Google API to skip editing that cell entirely,
-    // which protects your automated 'Type' formulas.
-
     if (type === 'Brand Say') {
       sheetName = 'Brand Say Contents';
-      // Format aligns with Brand Say Columns:
-      // Date(0), ID(1), Repurposed(2), OrigID(3), Campaign(4), Type(5)(Null for auto), Hook(6), Segments(7-10), ContentType(11), Duration(12), IG(13), FB(14), TT(15)
-      rowData = [date, creativeId, repurposed, originalId, campaign, null, null, null, null, null, null, 'Video', null, ig, fb, tt];
+      // Columns: Date(0), ID(1), Repurposed(2), OrigID(3), Campaign(4), Type(5)(Null for auto), Hook(6), Segments(7-10), ContentType(11), Duration(12), IG(13), FB(14), TT(15)
+      rowData = [date, creativeId, repurposed, originalId, campaign, null, hook, seg1, seg2, seg3, seg4, 'Video', null, ig, fb, tt];
     } else if (type === 'Others Say') {
       sheetName = 'Others Say Contents';
-      // Format aligns with Others Say Columns:
-      // Date(0), ID(1), Campaign(2), Type(3)(Null for auto), Profile(4), ContentType(5), Hook(6), Segments(7-10), Duration(11), IG(12), FB(13), TT(14)
-      rowData = [date, creativeId, campaign, null, null, 'Video', null, null, null, null, null, null, ig, fb, tt];
+      // Columns: Date(0), ID(1), Campaign(2), Type(3)(Null for auto), Profile(4), ContentType(5), Hook(6), Segments(7-10), Duration(11), IG(12), FB(13), TT(14)
+      rowData = [date, creativeId, campaign, null, null, 'Video', hook, seg1, seg2, seg3, seg4, null, ig, fb, tt];
     } else {
       return res.status(400).json({ error: 'Invalid Type selected.' });
     }
@@ -53,15 +107,22 @@ app.post('/api/add-creative', async (req, res) => {
       range: `${sheetName}!A:P`, 
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
-      requestBody: {
-        values: [rowData]
-      }
+      requestBody: { values: [rowData] }
     });
 
     res.json({ success: true, data: response.data, creativeId });
+
   } catch (error) {
-    console.error("Add Creative Error:", error);
-    res.status(500).json({ error: 'Failed to add creative to Google Sheets.' });
+    console.error("Critical Add Creative Error:", error);
+    res.status(500).json({ error: 'Failed to complete workflow.' });
+  } finally {
+    // Phase 3: Cleanup Server Storage
+    if (videoPath && fs.existsSync(videoPath)) {
+        fs.unlinkSync(videoPath);
+    }
+    if (geminiFile) {
+        try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {}
+    }
   }
 });
 
