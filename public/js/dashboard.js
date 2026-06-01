@@ -1329,129 +1329,215 @@ const cqrScoreMap = { "Poor": 1, "Average": 2, "Good": 3, "Excellent": 4 };
 // Track chart instances so we can destroy them before re-rendering
 let kpiCharts = {};
 
-function renderKPIDashboard() {
-    if (!ACCOUNT_OVERVIEW || ACCOUNT_OVERVIEW.length === 0) return;
+// --- KPI Dashboard Rendering Logic (Safe Fallback Version) ---
 
-    // --- SECTION 1: EXECUTIVE SUMMARY ---
-    const execData = ACCOUNT_OVERVIEW[0]; // Assuming row 1 has the latest aggregated monthly data
-    const actualSpend = parseNum(execData.ActSpend);
-    const kpiSpend = parseNum(execData.KpiSpend);
-    const actualReach = parseNum(execData.ActReach);
-    const kpiReach = parseNum(execData.kpiReach);
-    
-    document.getElementById('kpi-spend-val').innerText = `$${actualSpend.toLocaleString()}`;
-    document.getElementById('kpi-spend-sub').innerText = `${((actualSpend/kpiSpend)*100).toFixed(1)}% of Planned ($${kpiSpend.toLocaleString()})`;
-    document.getElementById('kpi-spend-bar').style.width = `${Math.min((actualSpend/kpiSpend)*100, 100)}%`;
+const cqrScoreMap = { "Poor": 1, "Average": 2, "Good": 3, "Excellent": 4 };
+let kpiCharts = {};
 
-    document.getElementById('kpi-reach-val').innerText = actualReach.toLocaleString();
-    document.getElementById('kpi-reach-sub').innerText = `${((actualReach/kpiReach)*100).toFixed(1)}% of Planned`;
-    document.getElementById('kpi-reach-bar').style.width = `${Math.min((actualReach/kpiReach)*100, 100)}%`;
-
-    document.getElementById('kpi-imp-val').innerText = parseNum(execData.ActImpressions).toLocaleString();
-    document.getElementById('kpi-imp-sub').innerText = `Target: ${parseNum(execData.kpiImpressions).toLocaleString()}`;
-    
-    document.getElementById('kpi-freq-val').innerText = parseNum(execData.ActFrequency).toFixed(2);
-
-    // --- SECTION 2: CONTENT BREAKDOWN ---
-    const brandSay = ALL_CONTENT.filter(c => c.type === 'Brand Say');
-    const othersSay = ALL_CONTENT.filter(c => c.type === 'Others Say');
-
-    document.getElementById('kpi-orig-val').innerText = ALL_CONTENT.filter(c => c.isRepurposed === 'No').length;
-    document.getElementById('kpi-repurp-val').innerText = ALL_CONTENT.filter(c => c.isRepurposed === 'Yes').length;
-    document.getElementById('kpi-valid-val').innerText = ALL_CONTENT.filter(c => c.validation === 'Ready' || c.validation === 'Validated').length;
-
-    // Helper: Average Metric Extractor
-    const getAvg = (arr, key) => {
-        const valid = arr.filter(c => parseNum(c[key]) > 0);
-        return valid.length ? (valid.reduce((sum, c) => sum + parseNum(c[key]), 0) / valid.length) : 0;
-    };
-    const getAvgCQR = (arr) => {
-        const valid = arr.filter(c => cqrScoreMap[c.cqr]);
-        return valid.length ? (valid.reduce((sum, c) => sum + cqrScoreMap[c.cqr], 0) / valid.length) : 0;
-    };
-
-    drawChart('chart-head-to-head', 'bar', {
-        labels: ['Avg Hook Rate %', 'Avg Hold Rate %', 'Avg CQR Score (1-4)'],
-        datasets: [
-            { label: 'Brand Say', backgroundColor: '#3b82f6', data: [getAvg(brandSay, 'hookRate'), getAvg(brandSay, 'holdRate'), getAvgCQR(brandSay)] },
-            { label: 'Others Say', backgroundColor: '#f59e0b', data: [getAvg(othersSay, 'hookRate'), getAvg(othersSay, 'holdRate'), getAvgCQR(othersSay)] }
-        ]
-    });
-
-    // Duration Level Insights (<10s, 10-15s, >15s)
-    const splitByDuration = (arr) => {
-        return [
-            getAvg(arr.filter(c => c.duration < 10), 'holdRate'),
-            getAvg(arr.filter(c => c.duration >= 10 && c.duration <= 15), 'holdRate'),
-            getAvg(arr.filter(c => c.duration > 15), 'holdRate')
-        ];
-    };
-
-    drawChart('chart-duration', 'bar', {
-        labels: ['< 10 Sec', '10 - 15 Sec', '15+ Sec'],
-        datasets: [
-            { label: 'Brand Say Hold Rate', backgroundColor: '#8b5cf6', data: splitByDuration(brandSay) },
-            { label: 'Others Say Hold Rate', backgroundColor: '#10b981', data: splitByDuration(othersSay) }
-        ]
-    });
-
-    // --- SECTION 3: CREATOR INSIGHTS ---
-    // Group organic data by creator
-    const creatorMap = {};
-    othersSay.forEach(c => {
-        if (!c.creatorProfile) return;
-        const profile = c.creatorProfile.split('/').filter(Boolean).pop() || "Unknown";
-        if (!creatorMap[profile]) creatorMap[profile] = { count: 0, watchTimeSum: 0, cqrSum: 0, items: 0 };
-        
-        creatorMap[profile].count += 1;
-        if (c.watchTime > 0) { creatorMap[profile].watchTimeSum += parseNum(c.watchTime); creatorMap[profile].items += 1; }
-        if (cqrScoreMap[c.cqr]) { creatorMap[profile].cqrSum += cqrScoreMap[c.cqr]; }
-    });
-
-    const creators = Object.keys(creatorMap);
-    
-    // Scatter Plot: Volume vs CQR
-    const scatterData = creators.map(name => ({
-        x: creatorMap[name].count, 
-        y: creatorMap[name].items ? (creatorMap[name].cqrSum / creatorMap[name].items) : 0,
-        creator: name
-    }));
-
-    drawChart('chart-creator-scatter', 'scatter', {
-        datasets: [{
-            label: 'Creators', backgroundColor: '#ec4899',
-            data: scatterData
-        }]
-    }, {
-        scales: { x: { title: { display: true, text: 'Total Videos Posted' } }, y: { title: { display: true, text: 'Avg CQR Score (1-4)' }, min: 0, max: 4 } },
-        plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.raw.creator}: ${ctx.raw.y.toFixed(2)} CQR (${ctx.raw.x} videos)` } } }
-    });
-
-    // Bar Plot: Retention Champions
-    const retentionData = creators.map(name => creatorMap[name].items ? (creatorMap[name].watchTimeSum / creatorMap[name].items) : 0);
-    drawChart('chart-creator-retention', 'bar', {
-        labels: creators,
-        datasets: [{ label: 'Avg Watch Time (sec)', backgroundColor: '#06b6d4', data: retentionData }]
-    });
-
-    // --- SECTION 4: PAID PLATFORM EFFICIENCY ---
-    const metaPaid = ALL_CONTENT.filter(c => c.platform === 'Meta Paid');
-    const ttPaid = ALL_CONTENT.filter(c => c.platform === 'TikTok Paid');
-
-    const metaCPR = (getAvg(metaPaid, 'spend') / (getAvg(metaPaid, 'reach') || 1)) * 1000;
-    const ttCPR = (getAvg(ttPaid, 'spend') / (getAvg(ttPaid, 'reach') || 1)) * 1000;
-
-    drawChart('chart-paid-cost', 'bar', {
-        labels: ['Meta Paid', 'TikTok Paid'],
-        datasets: [{ label: 'Cost per 1k Reach ($)', backgroundColor: '#ef4444', data: [metaCPR, ttCPR] }]
-    });
-
-    drawChart('chart-paid-attention', 'bar', {
-        labels: ['Meta Paid', 'TikTok Paid'],
-        datasets: [{ label: 'View Through Rate (VTR %)', backgroundColor: '#3b82f6', data: [getAvg(metaPaid, 'vtr'), getAvg(ttPaid, 'vtr')] }]
-    });
+function safeParseNum(val) {
+    if (typeof val === 'number') return val;
+    if (!val || val === 'Not Found' || val === '-' || val === '#REF!') return 0;
+    return parseFloat(String(val).replace(/[^0-9.-]+/g, "")) || 0;
 }
 
+function renderKPIDashboard() {
+    console.log("Initializing KPI Dashboard Render Pipeline...");
+    
+    if (!ACCOUNT_OVERVIEW || ACCOUNT_OVERVIEW.length === 0) {
+        console.warn("KPI Render Aborted: ACCOUNT_OVERVIEW structure empty.");
+        return;
+    }
+
+    try {
+        // --- SECTION 1: EXECUTIVE SUMMARY ---
+        // Grab values across your specific array columns safely
+        const execData = ACCOUNT_OVERVIEW[0] || {};
+        const actualSpend = safeParseNum(execData.ActSpend || execData[1]);
+        const kpiSpend = safeParseNum(execData.KpiSpend || execData[8]);
+        const actualReach = safeParseNum(execData.ActReach || execData[2]);
+        const kpiReach = safeParseNum(execData.kpiReach || execData[9]);
+        const actualImp = safeParseNum(execData.ActImpressions || execData[3]);
+        const kpiImp = safeParseNum(execData.kpiImpressions || execData[10]);
+        const actualFreq = safeParseNum(execData.ActFrequency || execData[4]);
+
+        document.getElementById('kpi-spend-val').innerText = `$${actualSpend.toLocaleString()}`;
+        if (kpiSpend > 0) {
+            document.getElementById('kpi-spend-sub').innerText = `${((actualSpend / kpiSpend) * 100).toFixed(1)}% of Planned ($${kpiSpend.toLocaleString()})`;
+            document.getElementById('kpi-spend-bar').style.width = `${Math.min((actualSpend / kpiSpend) * 100, 100)}%`;
+        }
+
+        document.getElementById('kpi-reach-val').innerText = actualReach.toLocaleString();
+        if (kpiReach > 0) {
+            document.getElementById('kpi-reach-sub').innerText = `${((actualReach / kpiReach) * 100).toFixed(1)}% of Planned Target`;
+            document.getElementById('kpi-reach-bar').style.width = `${Math.min((actualReach / kpiReach) * 100, 100)}%`;
+        }
+
+        document.getElementById('kpi-imp-val').innerText = actualImp.toLocaleString();
+        document.getElementById('kpi-imp-sub').innerText = `Target: ${kpiImp.toLocaleString()}`;
+        document.getElementById('kpi-freq-val').innerText = actualFreq > 0 ? actualFreq.toFixed(2) : "0.00";
+
+        // --- SECTION 2: PIPELINE ASSETS SPLIT ---
+        // Safe mapping fallback for properties regardless of data parsing schemas
+        const brandSay = (ALL_CONTENT || []).filter(c => String(c.type || c.Type).toLowerCase().includes('brand'));
+        const othersSay = (ALL_CONTENT || []).filter(c => String(c.type || c.Type).toLowerCase().includes('other'));
+
+        document.getElementById('kpi-orig-val').innerText = (ALL_CONTENT || []).filter(c => String(c.isRepurposed || c['Is Repurposed']).toLowerCase() === 'no').length;
+        document.getElementById('kpi-repurp-val').innerText = (ALL_CONTENT || []).filter(c => String(c.isRepurposed || c['Is Repurposed']).toLowerCase() === 'yes').length;
+        document.getElementById('kpi-valid-val').innerText = (ALL_CONTENT || []).filter(c => ['ready', 'validated', 'active'].includes(String(c.validation || c.AdStatus || c.Status).toLowerCase())).length;
+
+        // Dynamic key helper to pull keys that might vary between sheets
+        const getAvgMetric = (arr, possibleKeys) => {
+            const validRows = arr.filter(c => {
+                for (let k of possibleKeys) {
+                    if (c[k] !== undefined && safeParseNum(c[k]) > 0) return true;
+                }
+                return false;
+            });
+            if (!validRows.length) return 0;
+            const sum = validRows.reduce((s, c) => {
+                for (let k of possibleKeys) {
+                    if (c[k] !== undefined) return s + safeParseNum(c[k]);
+                }
+                return s;
+            }, 0);
+            return sum / validRows.length;
+        };
+
+        const getAvgCQR = (arr) => {
+            const validRows = arr.filter(c => cqrScoreMap[c.cqr || c.CQR]);
+            if (!validRows.length) return 0;
+            return validRows.reduce((s, c) => s + cqrScoreMap[c.cqr || c.CQR], 0) / validRows.length;
+        };
+
+        // Render Head to Head
+        const bHook = getAvgMetric(brandSay, ['hookRate', 'Hook Rate %', 'Hook']);
+        const bHold = getAvgMetric(brandSay, ['holdRate', 'Hold Rate %', 'Hold Rate']);
+        const oHook = getAvgMetric(othersSay, ['hookRate', 'Hook Rate %', 'Hook']);
+        const oHold = getAvgMetric(othersSay, ['holdRate', 'Hold Rate %', 'Hold Rate']);
+
+        drawSafeChart('chart-head-to-head', 'bar', {
+            labels: ['Hook Rate %', 'Hold Rate %', 'CQR Score (1-4)'],
+            datasets: [
+                { label: 'Brand Say', backgroundColor: '#3b82f6', data: [bHook, bHold, getAvgCQR(brandSay)] },
+                { label: 'Others Say', backgroundColor: '#f59e0b', data: [oHook, oHold, getAvgCQR(othersSay)] }
+            ]
+        });
+
+        // Duration Level Splitting Insights
+        const extractDurationSplit = (arr) => {
+            const dKey = 'duration';
+            const hKeys = ['holdRate', 'Hold Rate %', 'Hold Rate'];
+            const f1 = arr.filter(c => safeParseNum(c[dKey] || c['Duration'] || c['Video Duration'] || c['Duration (s)']) < 10);
+            const f2 = arr.filter(c => {
+                let sec = safeParseNum(c[dKey] || c['Duration'] || c['Video Duration'] || c['Duration (s)']);
+                return sec >= 10 && sec <= 15;
+            });
+            const f3 = arr.filter(c => safeParseNum(c[dKey] || c['Duration'] || c['Video Duration'] || c['Duration (s)']) > 15);
+
+            return [getAvgMetric(f1, hKeys), getAvgMetric(f2, hKeys), getAvgMetric(f3, hKeys)];
+        };
+
+        drawSafeChart('chart-duration', 'bar', {
+            labels: ['Short (<10s)', 'Mid (10-15s)', 'Long (15s+)'],
+            datasets: [
+                { label: 'Brand Say Hold', backgroundColor: '#8b5cf6', data: extractDurationSplit(brandSay) },
+                { label: 'Others Say Hold', backgroundColor: '#10b981', data: extractDurationSplit(othersSay) }
+            ]
+        });
+
+        // --- SECTION 3: CREATOR MAP PROCESSING ---
+        const creatorDataObj = {};
+        othersSay.forEach(c => {
+            let pStr = c.creatorProfile || c['Creator Profile'];
+            if (!pStr || typeof pStr !== 'string') return;
+            const handle = pStr.split('/').filter(Boolean).pop() || "Unknown";
+            
+            if (!creatorDataObj[handle]) creatorDataObj[handle] = { total: 0, watchTimeSum: 0, cqrSum: 0, counts: 0 };
+            creatorDataObj[handle].total += 1;
+            
+            let wt = safeParseNum(c.watchTime || c['TTAvg Watch Time (s)'] || c['IGAvg Watch Time (s)']);
+            if (wt > 0) { creatorDataObj[handle].watchTimeSum += wt; creatorDataObj[handle].counts += 1; }
+            
+            let score = cqrScoreMap[c.cqr || c.CQR];
+            if (score) creatorDataObj[handle].cqrSum += score;
+        });
+
+        const creatorList = Object.keys(creatorDataObj);
+        const scatterData = creatorList.map(name => ({
+            x: creatorDataObj[name].total,
+            y: creatorDataObj[name].total ? (creatorDataObj[name].cqrSum / creatorDataObj[name].total) : 0,
+            label: name
+        }));
+
+        drawSafeChart('chart-creator-scatter', 'scatter', {
+            datasets: [{
+                label: 'Profiles Impact',
+                backgroundColor: '#ec4899',
+                data: scatterData
+            }]
+        }, {
+            scales: {
+                x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Total Videos Output' } },
+                y: { min: 0, max: 4, title: { display: true, text: 'Quality CQR Score' } }
+            }
+        });
+
+        const retentionData = creatorList.map(name => creatorDataObj[name].counts ? (creatorDataObj[name].watchTimeSum / creatorDataObj[name].counts) : 0);
+        drawSafeChart('chart-creator-retention', 'bar', {
+            labels: creatorList,
+            datasets: [{ label: 'Avg Watch Duration (sec)', backgroundColor: '#06b6d4', data: retentionData }]
+        });
+
+        // --- SECTION 4: PAID PLATFORM ---
+        const metaPaid = (ALL_CONTENT || []).filter(c => String(c.platform || c.Platform).toLowerCase().includes('meta'));
+        const ttPaid = (ALL_CONTENT || []).filter(c => String(c.platform || c.Platform).toLowerCase().includes('tt') || String(c.platform || c.Platform).toLowerCase().includes('tiktok'));
+
+        const metaSpend = getAvgMetric(metaPaid, ['spend', 'Spend']);
+        const metaReach = getAvgMetric(metaPaid, ['reach', 'Reach']) || 1;
+        const ttSpend = getAvgMetric(ttPaid, ['spend', 'Spend']);
+        const ttReach = getAvgMetric(ttPaid, ['reach', 'Reach']) || 1;
+
+        const metaCPR = (metaSpend / metaReach) * 1000;
+        const ttCPR = (ttSpend / ttReach) * 1000;
+
+        drawSafeChart('chart-paid-cost', 'bar', {
+            labels: ['Meta Ad Platform', 'TikTok Ad Platform'],
+            datasets: [{ label: 'Cost Per 1,000 Reach ($)', backgroundColor: '#ef4444', data: [metaCPR, ttCPR] }]
+        });
+
+        drawSafeChart('chart-paid-attention', 'bar', {
+            labels: ['Meta Ad Platform', 'TikTok Ad Platform'],
+            datasets: [{ label: 'View Through Retention (VTR %)', backgroundColor: '#3b82f6', data: [getAvgMetric(metaPaid, ['vtr', 'VTR %']), getAvgMetric(ttPaid, ['vtr', 'VTR %'])] }]
+        });
+
+    } catch (err) {
+        console.error("Critical Failure detected within KPI dashboard script rendering flow:", err);
+    }
+}
+
+function drawSafeChart(id, type, data, options = {}) {
+    try {
+        const el = document.getElementById(id);
+        if (!el) {
+            console.error(`Target canvas ID target failed lookup: ${id}`);
+            return;
+        }
+        if (kpiCharts[id]) {
+            kpiCharts[id].destroy();
+        }
+        kpiCharts[id] = new Chart(el.getContext('2d'), {
+            type: type,
+            data: data,
+            options: Object.assign({
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: true } }
+            }, options)
+        });
+    } catch(e) {
+        console.error(`Canvas layout instance initiation crashed: ${id}`, e);
+    }
+}
 // Reusable Chart Drawing Function
 function drawChart(canvasId, type, data, extraOptions = {}) {
     if (kpiCharts[canvasId]) kpiCharts[canvasId].destroy();
