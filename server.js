@@ -20,32 +20,34 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 app.post('/api/add-creative', async (req, res) => {
   try {
-    const { date, campaign, type, ig, fb, tt } = req.body;
+    const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
     
-    // Generate a unique Creative ID
     const safeCampaignName = campaign.replace(/\s+/g, '');
     const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
     
     let sheetName = '';
     let rowData = [];
 
+    // NOTE: Passing 'null' into the array tells the Google API to skip editing that cell entirely,
+    // which protects your automated 'Type' formulas.
+
     if (type === 'Brand Say') {
       sheetName = 'Brand Say Contents';
       // Format aligns with Brand Say Columns:
-      // Date, Creative ID, Is Repurposed, Original Creative ID, Campaign, Type, Content Hook, 1st Seg, 2nd Seg, 3rd Seg, 4th Seg, Content Type, Duration, IG, FB, TT
-      rowData = [date, creativeId, 'No', '', campaign, type, '', '', '', '', '', 'Video', '', ig, fb, tt];
+      // Date(0), ID(1), Repurposed(2), OrigID(3), Campaign(4), Type(5)(Null for auto), Hook(6), Segments(7-10), ContentType(11), Duration(12), IG(13), FB(14), TT(15)
+      rowData = [date, creativeId, repurposed, originalId, campaign, null, null, null, null, null, null, 'Video', null, ig, fb, tt];
     } else if (type === 'Others Say') {
       sheetName = 'Others Say Contents';
       // Format aligns with Others Say Columns:
-      // Date, Creative ID, Campaign, Type, Creator Profile, Content Type, Content Hook, 1st Seg, 2nd Seg, 3rd Seg, 4th Seg, Duration (s), IG, FB, TT, YT...
-      rowData = [date, creativeId, campaign, type, '', 'Video', '', '', '', '', '', '', ig, fb, tt, ''];
+      // Date(0), ID(1), Campaign(2), Type(3)(Null for auto), Profile(4), ContentType(5), Hook(6), Segments(7-10), Duration(11), IG(12), FB(13), TT(14)
+      rowData = [date, creativeId, campaign, null, null, 'Video', null, null, null, null, null, null, ig, fb, tt];
     } else {
       return res.status(400).json({ error: 'Invalid Type selected.' });
     }
 
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.SHEET_ID,
-      range: `${sheetName}!A:P`, // Ensure it appends looking at columns A through P
+      range: `${sheetName}!A:P`, 
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
@@ -59,6 +61,7 @@ app.post('/api/add-creative', async (req, res) => {
     res.status(500).json({ error: 'Failed to add creative to Google Sheets.' });
   }
 });
+
 app.get('/api/dashboard-data', async (req, res) => {
   try {
     // Exact tab names matching your Excel file uploads
