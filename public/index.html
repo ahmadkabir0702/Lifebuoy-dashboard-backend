@@ -140,91 +140,53 @@
           <div class="card-grid" id="card-grid"></div>
         </div>
 
-       <div id="page-kpi" class="hidden">
-  
-  <!-- SECTION 1: Executive Summary -->
-  <h2 class="section-title">1. Executive Summary (Planned vs. Actual)</h2>
-  <div class="kpi-grid">
-    <div class="stat-card">
-      <div class="stat-title">Budget Health</div>
-      <div class="stat-value" id="kpi-spend-val">$0</div>
-      <div class="stat-sub" id="kpi-spend-sub">0% of Planned</div>
+<div id="page-kpi" class="hidden">
+    <h2 class="section-title">Campaign KPIs</h2>
+    
+    <!-- Section 1 & 2: Top Level Stats -->
+    <div class="kpi-summary-grid">
+        <div class="stat-card">
+            <h3>Actual Spend</h3>
+            <div class="stat-value" id="kpi-spend">$0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Actual Reach</h3>
+            <div class="stat-value" id="kpi-reach">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Actual Impressions</h3>
+            <div class="stat-value" id="kpi-imp">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Original Assets</h3>
+            <div class="stat-value" id="kpi-orig-assets">0</div>
+        </div>
+        <div class="stat-card">
+            <h3>Repurposed Assets</h3>
+            <div class="stat-value" id="kpi-repurp-assets">0</div>
+        </div>
     </div>
-    <div class="stat-card">
-      <div class="stat-title">Total Reach</div>
-      <div class="stat-value" id="kpi-reach-val">0</div>
-      <div class="stat-sub" id="kpi-reach-sub">0% of Planned</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-title">Total Impressions</div>
-      <div class="stat-value" id="kpi-imp-val">0</div>
-      <div class="stat-sub" id="kpi-imp-sub">Target: 0</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-title">Overall Frequency</div>
-      <div class="stat-value" id="kpi-freq-val">0.00</div>
-      <div class="stat-sub">Avg times seen</div>
-    </div>
-  </div>
 
-  <!-- SECTION 2: Content Breakdown -->
-  <h2 class="section-title">2. Content Pipeline & Duration Insights</h2>
-  <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr);">
-    <div class="stat-card" style="border-left: 4px solid #7c3aed;">
-      <div class="stat-title">Original Assets Produced</div>
-      <div class="stat-value" id="kpi-orig-val">0</div>
+    <!-- Section 3 & 4: Charts -->
+    <div class="kpi-charts-grid">
+        <div class="chart-wrapper">
+            <h3>Performance: Brand vs Others</h3>
+            <canvas id="chart-head-to-head"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <h3>Duration Insights (CQR)</h3>
+            <canvas id="chart-duration"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <h3>Creator Synergy (Views)</h3>
+            <canvas id="chart-synergy"></canvas>
+        </div>
+        <div class="chart-wrapper">
+            <h3>Paid Efficiency (Meta vs TT)</h3>
+            <canvas id="chart-paid"></canvas>
+        </div>
     </div>
-    <div class="stat-card" style="border-left: 4px solid #f59e0b;">
-      <div class="stat-title">Repurposed Assets</div>
-      <div class="stat-value" id="kpi-repurp-val">0</div>
-    </div>
-    <div class="stat-card" style="border-left: 4px solid #10b981;">
-      <div class="stat-title">Validated Assets (Ready)</div>
-      <div class="stat-value" id="kpi-valid-val">0</div>
-    </div>
-  </div>
-  
-  <div class="kpi-grid" style="grid-template-columns: 1fr 1fr;">
-    <div class="chart-wrapper">
-      <div class="stat-title">Performance Head-to-Head</div>
-      <canvas id="chart-h2h"></canvas>
-    </div>
-    <div class="chart-wrapper">
-      <div class="stat-title">Duration Insights: CQR Score</div>
-      <canvas id="chart-duration"></canvas>
-    </div>
-  </div>
-
-  <!-- SECTION 3: Creator Insights -->
-  <h2 class="section-title">3. Creator Insights (Others Say)</h2>
-  <div class="kpi-grid" style="grid-template-columns: 1fr 1fr;">
-    <div class="chart-wrapper">
-      <div class="stat-title">Platform Synergy (Reach by Platform)</div>
-      <canvas id="chart-creator-platform"></canvas>
-    </div>
-    <div class="chart-wrapper">
-      <div class="stat-title">Retention Champions (Avg Watch Time)</div>
-      <canvas id="chart-creator-retention"></canvas>
-    </div>
-    <div class="chart-wrapper">
-      <div class="stat-title">The Hook Masters (Hook Rate %)</div>
-      <canvas id="chart-creator-hook"></canvas>
-    </div>
-    <div class="chart-wrapper">
-      <div class="stat-title">Creator Consistency (Volume vs CQR)</div>
-      <canvas id="chart-creator-consistency"></canvas>
-    </div>
-  </div>
-
-  <!-- SECTION 4: Paid Platform Efficiency -->
-  <h2 class="section-title">4. Paid Platform Efficiency (Meta vs TikTok)</h2>
-  <div class="kpi-grid" style="grid-template-columns: 1fr 1fr;">
-    <div class="chart-wrapper">
-      <div class="stat-title">Attention Metrics (VTR & Watch Time)</div>
-      <canvas id="chart-paid-attention"></canvas>
-    </div>
-  </div>
-</div>          
+</div>
         </div>
       </div>
     </div>
