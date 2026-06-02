@@ -305,21 +305,17 @@ function processContent(bsRows, osRows) {
     });
   };
 
-  // Brand Say
   if (bsRows && bsRows.length > 1) {
     const headers = bsRows[0].map(h => String(h).trim().toLowerCase());
     const h = {};
     commonHeaders(headers, h);
-  bsRows.slice(1).forEach(row => {
+    bsRows.slice(1).forEach(row => {
       const id = String(row[h['Creative ID']] || '').trim();
       if (!id || !id.startsWith('Lifebuoy')) return;
       const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
       const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
-      
-      // Add the short name generation
       const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
       const shortName = m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : id;
-
       ALL_CONTENT.push({
         id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
         type: 'Brand Say', month: getMonthFromId(id), isPaid: PAID_IDS.has(id),
@@ -334,7 +330,6 @@ function processContent(bsRows, osRows) {
     });
   }
 
-  // Others Say — includes inline organic metrics
   if (osRows && osRows.length > 1) {
     const headers = osRows[0].map(h => String(h).trim().toLowerCase());
     const h = {};
@@ -390,9 +385,6 @@ function processContent(bsRows, osRows) {
         saves: parseNum(row[h['FBSaves']]), cqr: ''
       } : null;
 
-      // ... existing ttViews, igViews, fbViews logic ...
-      
-      // Add the short name generation
       const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
       const shortName = m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : id;
 
@@ -429,7 +421,7 @@ function parseAccountOverview(rows) {
     if (name === 'kpifrequency') h['KpiFrequency'] = i;
   });
 
-const seen = new Set();
+  const seen = new Set();
   return rows.slice(2).map(row => {
     const actMonth = String(row[h['ActMonth']] || '').trim();
     if (!actMonth || seen.has(actMonth)) return null;
@@ -483,7 +475,6 @@ function enrichCreatives() {
       }
     }
 
-    // Others Say uses inline organic from content sheet; Brand Say uses external organic sheets
     if (c.type === 'Others Say' && contentMap[c.id]) {
       c.igOrganic = contentMap[c.id].igOrganic || null;
       c.fbOrganic = contentMap[c.id].fbOrganic || null;
@@ -542,38 +533,27 @@ function populateFilters() {
 }
 
 function setNav(page, element) {
-    // 1. Hide both pages safely
     const creativePage = document.getElementById('page-creatives');
     const kpiPage = document.getElementById('page-kpi');
-    
     if (creativePage) creativePage.classList.add('hidden');
     if (kpiPage) kpiPage.classList.add('hidden');
-    
-    // 2. Show the selected page
     const selectedPage = document.getElementById(`page-${page}`);
     if (selectedPage) selectedPage.classList.remove('hidden');
-
-    // 3. Update the Topbar Title
     const titles = { 'creatives': 'Creative Hub', 'kpi': 'Campaign KPIs' };
     const titleEl = document.getElementById('topbar-title');
     if (titleEl) titleEl.innerText = titles[page] || '';
-
-    // 4. Update the active styling on the sidebar buttons
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     if (element) {
         element.classList.add('active');
     } else {
-        // Fallback if triggered without 'this'
         const navLink = document.querySelector(`[onclick="setNav('${page}',this)"]`);
         if (navLink) navLink.classList.add('active');
     }
-
-    // 5. Trigger the KPI data render
     if (page === 'kpi' && typeof renderKPIDashboard === 'function') {
-        console.log("KPI Tab clicked! Triggering data render...");
         renderKPIDashboard();
     }
 }
+
 function setPlatform(p, el) {
   currentPlatform = p;
   document.querySelectorAll('.pt').forEach(b=>b.classList.remove('active'));
@@ -613,7 +593,7 @@ function getData() {
   if (mf !== 'all')   data = data.filter(d => d.month === mf);
   if (campf !== 'all') data = data.filter(d => d.campaign === campf);
   if (ctf !== 'all')  data = data.filter(d => d.contentType === ctf);
-if (af === 'actioned') {
+  if (af === 'actioned') {
     data = data.filter(d => {
       const actRoot = d.actionStatus ? d.actionStatus.toLowerCase() : '';
       const actMeta = (d._meta && d._meta.actionStatus) ? d._meta.actionStatus.toLowerCase() : '';
@@ -621,29 +601,21 @@ if (af === 'actioned') {
       return actRoot === 'actioned' || actMeta === 'actioned' || actTt === 'actioned';
     });
   }
-  
   if (af === 'not_actioned') {
     data = data.filter(d => {
-      // Check if there's a recommendation anywhere
       const hasRec  = d.recommendation || (d._meta && d._meta.recommendation) || (d._tt && d._tt.recommendation);
-      
-      // Check if it's been actioned anywhere
       const actRoot = d.actionStatus ? d.actionStatus.toLowerCase() : '';
       const actMeta = (d._meta && d._meta.actionStatus) ? d._meta.actionStatus.toLowerCase() : '';
       const actTt   = (d._tt && d._tt.actionStatus) ? d._tt.actionStatus.toLowerCase() : '';
       const isActed = actRoot === 'actioned' || actMeta === 'actioned' || actTt === 'actioned';
-      
       return hasRec && !isActed;
     });
   }
-
   if (sf === 'ACTIVE')               data = data.filter(d => d.adStatus === 'ACTIVE');
   if (sf === 'STOPPED')              data = data.filter(d => d.adStatus === 'STOPPED');
   if (sf === 'VALIDATED_NOT_BOOSTED') data = data.filter(d => d.isValidated && !d.isBoosted);
-
   if (vf === 'validated')     data = data.filter(d => d.isValidated);
   if (vf === 'not_validated') data = data.filter(d => !d.isValidated);
-
   if (searchQ) data = data.filter(d => d.id.toLowerCase().includes(searchQ) || (d.short||'').toLowerCase().includes(searchQ));
 
   return [...data].sort((a,b) => {
@@ -663,15 +635,12 @@ function fmt(n)  { return n>=1000000?'$'+(n/1000000).toFixed(1)+'M':n>=1000?'$'+
 function fmtN(n) { return n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(0)+'K':String(n); }
 
 function render() {
-  const data = getData(); // This fetches your filtered data
-  
+  const data = getData();
   if (currentPage === 'creatives') {
     renderKPIs(data);
     renderCards(data);
   } else if (currentPage === 'kpi') {
-    if (typeof renderKpiTab === 'function') {
-      renderKpiTab(data); // Pass the filtered data into the KPI section
-    }
+    if (typeof renderKpiTab === 'function') renderKpiTab(data);
   }
 }
 
@@ -725,7 +694,7 @@ function renderCards(data) {
         <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;justify-content:flex-end">
           <span class="card-type ${d.type==='Brand Say'?'bs-tag':'os-tag'}">${d.type==='Brand Say'?'BS':'OS'}</span>${repTag}
         </div>
-    </div>
+      </div>
       <div class="card-name">${d.short || d.id}</div>
       <div class="card-campaign">${d.campaign} · ${d.month}</div>
       <div class="card-tags">${durTag}${ctTag}${valTag}</div>
@@ -868,7 +837,6 @@ function renderDetail(d) {
   const repText = d.isRepurposed && d.originalName
     ? `<div style="font-size:11px;color:var(--c-muted);font-weight:600;margin-top:8px;">Original Asset: <span style="color:var(--c-text);">${d.originalName}</span></div>` : '';
 
-  // Creator profile for Others Say
   let creatorHTML = '';
   if (d.type === 'Others Say') {
     const creator = extractCreatorInfo(d.creatorProfile, d.ttLink);
@@ -880,7 +848,6 @@ function renderDetail(d) {
     }
   }
 
-  // Meta line: platform · campaign · month · duration · content type
   const metaParts = [platLabel, d.campaign, d.month];
   if (d.duration) metaParts.push(`${d.duration}s`);
   if (d.contentType) metaParts.push(d.contentType);
@@ -927,247 +894,53 @@ function renderDetail(d) {
     hookPointLabel = 'Hook (3s/2s)';
     retDatasets.push({label:'Meta %',   data:d._meta.ret, borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.1)', fill:true, tension:0.3, pointBackgroundColor:'#1877f2', pointRadius:4, borderWidth:2});
     retDatasets.push({label:'TikTok %', data:d._tt.ret,   borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.1)',   fill:true, tension:0.3, pointBackgroundColor:'#ff0050', pointRadius:4, borderWidth:2});
-    radDatasets.push({label:'Meta',   data:[norm(d._meta.hookRate*1.5),norm((d._meta.holdRate/(d._meta.vp||1))*100*1.5),norm(d._meta.vtr*10),norm(d._meta.watchTime*8),norm(d._meta.reach/(d._meta.spend||1)*5)],   borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.15)', borderWidth:2, pointRadius:3});
-    radDatasets.push({label:'TikTok', data:[norm(d._tt.hookRate*1.5),  norm((d._tt.holdRate/(d._tt.vp||1))*100*1.5),    norm(d._tt.vtr*10),  norm(d._tt.watchTime*8),  norm(d._tt.reach/(d._tt.spend||1)*5)],     borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.15)',   borderWidth:2, pointRadius:3});
+
+    // Radar: Eng Rate, Hook Rate, Hold Rate, CPM Efficiency, Reach
+    const metaEngRate = d._meta.impressions > 0 ? norm((d._meta.reach / d._meta.impressions) * 200) : 0;
+    const ttEngRate   = d._tt.impressions   > 0 ? norm((d._tt.reach   / d._tt.impressions)   * 200) : 0;
+    const metaCPMEff  = (d._meta.spend > 0 && d._meta.reach > 0) ? norm(Math.max(0, 100 - (d._meta.spend / d._meta.reach * 1000))) : 0;
+    const ttCPMEff    = (d._tt.spend   > 0 && d._tt.reach   > 0) ? norm(Math.max(0, 100 - (d._tt.spend   / d._tt.reach   * 1000))) : 0;
+    const metaReachN  = norm(d._meta.reach / 50000 * 100);
+    const ttReachN    = norm(d._tt.reach   / 50000 * 100);
+
+    radDatasets.push({label:'Meta',   data:[metaEngRate, norm(d._meta.hookRate*2), norm(d._meta.holdRate*2), metaCPMEff, metaReachN], borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.15)', borderWidth:2, pointRadius:3});
+    radDatasets.push({label:'TikTok', data:[ttEngRate,   norm(d._tt.hookRate*2),   norm(d._tt.holdRate*2),   ttCPMEff,   ttReachN],   borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.15)',   borderWidth:2, pointRadius:3});
   } else {
     hookPointLabel = d.platform==='tiktok'?'2s hook':'3s hook';
-    const color = d.platform==='tiktok'?'#ff0050':'#1877f2';
+    const color  = d.platform==='tiktok'?'#ff0050':'#1877f2';
     const bgLine = d.platform==='tiktok'?'rgba(255,0,80,0.1)':'rgba(24,119,242,0.1)';
     const bgRad  = d.platform==='tiktok'?'rgba(255,0,80,0.15)':'rgba(24,119,242,0.15)';
     retDatasets.push({label:'%', data:d.ret, borderColor:color, backgroundColor:bgLine, fill:true, tension:0.3, pointBackgroundColor:color, pointRadius:4, borderWidth:2});
-    radDatasets.push({label:d.platform, data:[norm(d.hookRate*1.5),norm((d.holdRate/(d.vp||1))*100*1.5),norm(d.vtr*10),norm(d.watchTime*8),norm(d.reach/(d.spend||1)*5)], borderColor:color, backgroundColor:bgRad, borderWidth:2, pointRadius:3});
+
+    const engRate = d.impressions > 0 ? norm((d.reach / d.impressions) * 200) : 0;
+    const cpmEff  = (d.spend > 0 && d.reach > 0) ? norm(Math.max(0, 100 - (d.spend / d.reach * 1000))) : 0;
+    const reachN  = norm(d.reach / 50000 * 100);
+
+    radDatasets.push({label:d.platform, data:[engRate, norm(d.hookRate*2), norm(d.holdRate*2), cpmEff, reachN], borderColor:color, backgroundColor:bgRad, borderWidth:2, pointRadius:3});
   }
 
   retChart = new Chart(document.getElementById('retChart'), {
     type:'line', data:{labels:['Start',hookPointLabel,'25%','50%','75%','100%'], datasets:retDatasets},
     options:{responsive:true,maintainAspectRatio:false,scales:{y:{min:0,max:105,grid:{color:gc},ticks:{color:tc,callback:v=>v+'%'}},x:{grid:{color:gc},ticks:{color:tc,font:{size:10}}}},plugins:{legend:{display:d.platform==='both',labels:{color:tc,font:{size:10},boxWidth:10}},tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.raw.toFixed(1)}%`}}}}
   });
+
   radarChart = new Chart(document.getElementById('radarChart'), {
-    type:'radar', data:{labels:['Hook','Hold','VTR','Watch','Reach/Spend'], datasets:radDatasets},
-    options:{responsive:true,maintainAspectRatio:false,scales:{r:{min:0,max:100,grid:{color:gc},ticks:{display:false},pointLabels:{color:tc,font:{size:10}},angleLines:{color:gc}}},plugins:{legend:{display:d.platform==='both',labels:{color:tc,font:{size:10},boxWidth:10}}}}
+    type:'radar',
+    data:{
+      labels:['Eng. Rate','Hook Rate','Hold Rate','CPM Eff.','Reach'],
+      datasets:radDatasets
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{r:{min:0,max:100,grid:{color:gc},ticks:{display:false},pointLabels:{color:tc,font:{size:10}},angleLines:{color:gc}}},
+      plugins:{
+        legend:{display:d.platform==='both',labels:{color:tc,font:{size:10},boxWidth:10}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.raw}`}}
+      }
+    }
   });
 }
 
-let kpiChartInstances = [];
-
-function switchKpiTab(tabId) {
-  document.querySelectorAll('.kpi-tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.kpi-section').forEach(sec => sec.classList.remove('active'));
-  document.querySelector(`[onclick="switchKpiTab('${tabId}')"]`).classList.add('active');
-  document.getElementById(`kpi-sec-${tabId}`).classList.add('active');
-}
-
-function renderKpiTab(filteredData) {
-  const el = document.getElementById('page-kpi');
-  if (!el) return;
-
-  if (!filteredData || filteredData.length === 0) {
-    el.innerHTML = `<div style="padding:20px;color:var(--c-muted)">No data matches current filters.</div>`;
-    return;
-  }
-
-  // Calculate top-line metrics based ONLY on the filtered data
-  const totalSpend = filteredData.reduce((s, d) => s + (d.spend || 0), 0);
-  const totalReach = filteredData.reduce((s, d) => s + (d.reach || 0), 0);
-  const totalImpr  = filteredData.reduce((s, d) => s + (d.impressions || 0), 0);
-  const activeAds  = filteredData.filter(d => d.adStatus === 'ACTIVE').length;
-
-  el.innerHTML = `
-    <div class="kpi-row" style="margin-bottom:20px;">
-      <div class="kpi"><div class="kpi-label">Filtered Spend</div><div class="kpi-val">${fmt(totalSpend)}</div></div>
-      <div class="kpi"><div class="kpi-label">Filtered Reach</div><div class="kpi-val">${fmtN(totalReach)}</div></div>
-      <div class="kpi"><div class="kpi-label">Filtered Impressions</div><div class="kpi-val">${fmtN(totalImpr)}</div></div>
-      <div class="kpi"><div class="kpi-label">Active Assets in View</div><div class="kpi-val" style="color:var(--c-good)">${activeAds}</div></div>
-    </div>
-
-    <div class="kpi-tabs">
-      <button class="kpi-tab-btn active" onclick="switchKpiTab('overview')">Executive Overview</button>
-      <button class="kpi-tab-btn" onclick="switchKpiTab('creators')">Creator Intelligence</button>
-      <button class="kpi-tab-btn" onclick="switchKpiTab('forensics')">Creative Forensics</button>
-    </div>
-
-    <div id="kpi-sec-overview" class="kpi-section active">
-      <div class="dashboard-grid">
-        <div class="kpi-chart-card">
-          <div class="kpi-chart-title">Spend Allocation by CQR (Media Waste)</div>
-          <div style="height:250px; position:relative;"><canvas id="chart-cqr-spend"></canvas></div>
-        </div>
-        <div class="kpi-chart-card">
-          <div class="kpi-chart-title">Platform Efficiency (Cost per 1K Reach vs Hook)</div>
-          <div style="height:250px"><canvas id="chart-platform-roi"></canvas></div>
-        </div>
-      </div>
-      <div class="dashboard-grid full">
-        <div class="kpi-chart-card">
-          <div class="kpi-chart-title">Content Format Head-to-Head (Avg Rates)</div>
-          <div style="height:280px"><canvas id="chart-format-bar"></canvas></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="kpi-sec-creators" class="kpi-section">
-      <div class="dashboard-grid full">
-        <div class="kpi-chart-card">
-          <div class="kpi-chart-title">Creator Performance Matrix (CQR & Attention)</div>
-          <div style="overflow-x:auto;" id="creator-table-container"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="kpi-sec-forensics" class="kpi-section">
-      <div class="dashboard-grid">
-        <div class="kpi-chart-card">
-          <div class="kpi-chart-title">Original vs. Repurposed Content ROI</div>
-          <div style="height:250px"><canvas id="chart-repurpose"></canvas></div>
-        </div>
-        <div class="kpi-chart-card">
-          <div class="kpi-chart-title">Audience Attention Funnel (Drop-off)</div>
-          <div style="height:250px"><canvas id="chart-funnel"></canvas></div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  renderKpiCharts(filteredData);
-}
-
-function renderKpiCharts(filteredData) {
-  // Clear existing instances
-  if (window.kpiChartInstances) {
-    window.kpiChartInstances.forEach(c => c.destroy());
-  }
-  window.kpiChartInstances = [];
-
-  const isDark = matchMedia('(prefers-color-scheme:dark)').matches;
-  const tc = isDark ? '#f0f0f0' : '#1a1a1a';
-  const gc = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-  const calcAvg = (arr, key) => arr.length ? arr.reduce((sum, d) => sum + (d[key]||0), 0) / arr.length : 0;
-
-  // --- 1. Spend Allocation by CQR (Donut) ---
-  let cqrSpend = { Good: 0, Average: 0, Poor: 0, Invalid: 0 };
-  filteredData.forEach(d => { if(cqrSpend[d.cqr] !== undefined) cqrSpend[d.cqr] += (d.spend||0); });
-  
-  window.kpiChartInstances.push(new Chart(document.getElementById('chart-cqr-spend'), {
-    type: 'doughnut',
-    data: {
-      labels: ['Good', 'Average', 'Poor', 'Invalid'],
-      datasets: [{ data: [cqrSpend.Good, cqrSpend.Average, cqrSpend.Poor, cqrSpend.Invalid], backgroundColor: ['#16a34a', '#d97706', '#dc2626', '#6b7280'], borderWidth: 0 }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels:{color:tc} } }, cutout: '65%' }
-  }));
-
-  // --- 2. Platform ROI (Horizontal Bar) ---
-  const metaData = filteredData.filter(d => d.platform === 'meta' || d.platform === 'both').map(d => d.platform === 'both' ? d._meta : d);
-  const ttData = filteredData.filter(d => d.platform === 'tiktok' || d.platform === 'both').map(d => d.platform === 'both' ? d._tt : d);
-  
-  const metaSpend = metaData.reduce((s,d)=>s+(d.spend||0),0);
-  const metaReach = metaData.reduce((s,d)=>s+(d.reach||0),0);
-  const metaCPM   = metaReach > 0 ? (metaSpend / metaReach) * 1000 : 0;
-  
-  const ttSpend = ttData.reduce((s,d)=>s+(d.spend||0),0);
-  const ttReach = ttData.reduce((s,d)=>s+(d.reach||0),0);
-  const ttCPM   = ttReach > 0 ? (ttSpend / ttReach) * 1000 : 0;
-
-  window.kpiChartInstances.push(new Chart(document.getElementById('chart-platform-roi'), {
-    type: 'bar',
-    data: {
-      labels: ['Meta', 'TikTok'],
-      datasets: [
-        { label: 'Cost per 1k Reach ($)', data: [metaCPM, ttCPM], backgroundColor: ['#1877f2', '#ff0050'], yAxisID: 'y' },
-        { label: 'Avg Hook Rate (%)', data: [calcAvg(metaData, 'hookRate'), calcAvg(ttData, 'hookRate')], type: 'line', borderColor: '#10b981', borderWidth: 3, yAxisID: 'y1' }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero:true, grid:{color:gc} }, y1: { position:'right', beginAtZero:true, grid:{display:false} } } }
-  }));
-
-  // --- 3. Format Head-to-Head (Grouped Bar) ---
-  const bsAssets = filteredData.filter(d => d.type === 'Brand Say');
-  const osAssets = filteredData.filter(d => d.type === 'Others Say');
-
-  window.kpiChartInstances.push(new Chart(document.getElementById('chart-format-bar'), {
-    type: 'bar',
-    data: {
-      labels: ['Avg Hook Rate', 'Avg Hold Rate', 'Avg VTR'],
-      datasets: [
-        { label: 'Brand Say', data: [calcAvg(bsAssets, 'hookRate'), calcAvg(bsAssets, 'holdRate'), calcAvg(bsAssets, 'vtr')], backgroundColor: '#7c3aed' },
-        { label: 'Others Say', data: [calcAvg(osAssets, 'hookRate'), calcAvg(osAssets, 'holdRate'), calcAvg(osAssets, 'vtr')], backgroundColor: '#0891b2' }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: {color:gc} } } }
-  }));
-
-  // --- 4. Creator Leaderboard (CQR Focused) ---
-  const creators = {};
-  osAssets.filter(d => d.creatorProfile).forEach(d => {
-    const name = extractCreatorInfo(d.creatorProfile)?.username || d.creatorProfile;
-    if (!creators[name]) creators[name] = { name, videos: 0, hookSum: 0, holdSum: 0, cqr: {Good:0, Average:0, Poor:0, Invalid:0} };
-    creators[name].videos += 1;
-    creators[name].hookSum += d.hookRate || 0;
-    creators[name].holdSum += d.holdRate || 0;
-    creators[name].cqr[d.cqr || 'Invalid'] += 1;
-  });
-
-  const creatorRows = Object.values(creators)
-    .map(c => ({ ...c, avgHook: c.hookSum/c.videos, avgHold: c.holdSum/c.videos }))
-    .sort((a,b) => b.avgHook - a.avgHook)
-    .map(c => {
-      const cqrBars = `
-        <div style="display:flex; height:6px; width:100px; border-radius:3px; overflow:hidden; background:var(--c-border)">
-          ${c.cqr.Good > 0 ? `<div style="width:${(c.cqr.Good/c.videos)*100}%; background:#16a34a;" title="${c.cqr.Good} Good"></div>` : ''}
-          ${c.cqr.Average > 0 ? `<div style="width:${(c.cqr.Average/c.videos)*100}%; background:#d97706;" title="${c.cqr.Average} Average"></div>` : ''}
-          ${c.cqr.Poor > 0 ? `<div style="width:${(c.cqr.Poor/c.videos)*100}%; background:#dc2626;" title="${c.cqr.Poor} Poor"></div>` : ''}
-        </div>
-        <div style="font-size:9px; color:var(--c-muted); margin-top:2px;">${c.cqr.Good}G / ${c.cqr.Average}A / ${c.cqr.Poor}P</div>
-      `;
-      return `<tr>
-        <td style="font-weight:700">${c.name}</td>
-        <td>${c.videos}</td>
-        <td style="color:${c.avgHook > 25 ? 'var(--c-good)' : 'inherit'}">${c.avgHook.toFixed(1)}%</td>
-        <td>${c.avgHold.toFixed(1)}</td>
-        <td>${cqrBars}</td>
-      </tr>`;
-    }).join('');
-
-  document.getElementById('creator-table-container').innerHTML = `
-    <table class="creator-table">
-      <thead><tr><th>Creator</th><th>Total Assets</th><th>Avg Hook Rate</th><th>Avg Hold Rate</th><th>CQR Distribution</th></tr></thead>
-      <tbody>${creatorRows || '<tr><td colspan="5" style="text-align:center;color:var(--c-muted);">No Creators in current filter</td></tr>'}</tbody>
-    </table>`;
-
-  // --- 5. Repurpose Multiplier (Bar Chart) ---
-  const origAssets = filteredData.filter(d => d.isRepurposed === false);
-  const repAssets = filteredData.filter(d => d.isRepurposed === true);
-
-  window.kpiChartInstances.push(new Chart(document.getElementById('chart-repurpose'), {
-    type: 'bar',
-    data: {
-      labels: ['Original Content', 'Repurposed Content'],
-      datasets: [
-        { label: 'Avg Hook Rate', data: [calcAvg(origAssets, 'hookRate'), calcAvg(repAssets, 'hookRate')], backgroundColor: '#3b82f6' },
-        { label: 'Avg Hold Rate', data: [calcAvg(origAssets, 'holdRate'), calcAvg(repAssets, 'holdRate')], backgroundColor: '#8b5cf6' }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: {color:gc} } } }
-  }));
-
-  // --- 6. Funnel Chart (Averaged Retention) ---
-  const calcAvgArr = (assets) => {
-    let sums = [0,0,0,0,0,0], count = 0;
-    assets.forEach(a => { if(a.ret && a.ret.length === 6) { a.ret.forEach((v,i)=>sums[i]+=v); count++; } });
-    return count > 0 ? sums.map(s => s/count) : [];
-  };
-
-  window.kpiChartInstances.push(new Chart(document.getElementById('chart-funnel'), {
-    type: 'line',
-    data: {
-      labels: ['0%', 'Hook', '25%', '50%', '75%', '100%'],
-      datasets: [
-        { label: 'Filtered Average', data: calcAvgArr(filteredData), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3 }
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 100, grid: {color:gc} }, x: { grid:{color:gc} } } }
-  }));
-}
 let pendingAction = null;
 
 function openActionModal(creativeId, platform) {
@@ -1215,61 +988,44 @@ async function confirmAction() {
   }
 }
 
-// --- Add Creative Feature ---
 function openAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'flex';
-  
-  // 1. Dynamically Populate Campaigns Dropdown from existing data
   const campaignSelect = document.getElementById('ac-campaign');
   const campaigns = [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))];
-  
   campaignSelect.innerHTML = '<option value="" disabled selected>Select Campaign</option>';
-  campaigns.forEach(c => {
-    campaignSelect.innerHTML += `<option value="${c}">${c}</option>`;
-  });
-
-  // 2. Dynamically Populate Original Creative IDs Dropdown
+  campaigns.forEach(c => { campaignSelect.innerHTML += `<option value="${c}">${c}</option>`; });
   const orgIdSelect = document.getElementById('ac-original-id');
   const creativeIds = [...new Set(ALL_CONTENT.map(c => c.id).filter(id => id))];
-  
   orgIdSelect.innerHTML = '<option value="" disabled selected>Select Original Creative ID</option>';
-  creativeIds.forEach(id => {
-    orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`;
-  });
+  creativeIds.forEach(id => { orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`; });
 }
 
 function closeAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'none';
   document.getElementById('addCreativeForm').reset();
-  toggleCreativeFields(); // Reset field visibility
+  toggleCreativeFields();
 }
 
-// Show/Hide 'Is Repurposed' based on Category
 function toggleCreativeFields() {
   const type = document.getElementById('ac-type').value;
   const repurposedSelect = document.getElementById('ac-repurposed');
   const originalIdSelect = document.getElementById('ac-original-id');
-
   if (type === 'Brand Say') {
     repurposedSelect.style.display = 'block';
     repurposedSelect.required = true;
   } else {
-    // Hide and clear if 'Others Say'
     repurposedSelect.style.display = 'none';
     repurposedSelect.required = false;
     repurposedSelect.value = "";
-    
     originalIdSelect.style.display = 'none';
     originalIdSelect.required = false;
     originalIdSelect.value = "";
   }
 }
 
-// Show/Hide 'Original ID' based on 'Is Repurposed'
 function toggleOriginalIdField() {
   const repurposed = document.getElementById('ac-repurposed').value;
   const originalIdSelect = document.getElementById('ac-original-id');
-
   if (repurposed === 'Yes') {
     originalIdSelect.style.display = 'block';
     originalIdSelect.required = true;
@@ -1282,7 +1038,6 @@ function toggleOriginalIdField() {
 
 async function submitCreative(e) {
   e.preventDefault();
-  
   const campaign = document.getElementById('ac-campaign').value;
   const type = document.getElementById('ac-type').value;
   const date = document.getElementById('ac-date').value;
@@ -1291,212 +1046,41 @@ async function submitCreative(e) {
   const tt = document.getElementById('ac-tt').value;
   const repurposed = document.getElementById('ac-repurposed').value || "No";
   const originalId = document.getElementById('ac-original-id').value || "";
-
   const btnConfirm = document.getElementById('ac-confirm-btn');
   const btnCancel = document.getElementById('ac-cancel-btn');
   const progressContainer = document.getElementById('ac-progress-container');
   const progressText = document.getElementById('ac-progress-text');
-
-  // Lock the UI
   btnConfirm.disabled = true;
   btnCancel.disabled = true;
-  document.getElementById('addCreativeModal').style.pointerEvents = 'none'; // Prevents clicking the background to close
+  document.getElementById('addCreativeModal').style.pointerEvents = 'none';
   progressContainer.style.display = 'block';
   progressText.innerText = "Downloading video & generating AI analysis... (This can take up to 60 seconds)";
-
   try {
     const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId })
     });
-    
     const result = await res.json();
     if (result.success) {
       progressText.innerText = "✅ Success! Sheet has been updated.";
-      setTimeout(() => {
-          closeAddCreativeModal();
-          location.reload(); 
-      }, 1500);
+      setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 1500);
     } else {
       alert('Failed to add creative: ' + (result.error || 'Unknown error'));
       resetSubmitUI();
     }
   } catch (err) {
     console.error(err);
-    alert('An error occurred while connecting to the server. The download may have timed out.');
+    alert('An error occurred while connecting to the server.');
     resetSubmitUI();
   }
 }
 
-// Helper to reset the modal if there's an error
 function resetSubmitUI() {
-    document.getElementById('ac-confirm-btn').disabled = false;
-    document.getElementById('ac-cancel-btn').disabled = false;
-    document.getElementById('ac-progress-container').style.display = 'none';
-    document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
-}
-
-// --- KPI Dashboard Logic (Dynamic Engine) ---
-
-// Global Chart Tracker to prevent canvas overlaps
-let kpiChartsMap = {};
-
-// Safe Number Parser
-function safeNumData(val) {
-    if (typeof val === 'number') return val;
-    if (!val || val === 'Not Found' || val === '-' || val === '#REF!' || String(val).toLowerCase().includes('spend')) return 0;
-    const parsed = parseFloat(String(val).replace(/[^0-9.-]+/g, ""));
-    return isNaN(parsed) ? 0 : parsed;
-}
-
-// CQR Number Converter
-function convertCQR(val) {
-    const v = String(val).toLowerCase();
-    if (v.includes('excellent') || v === '4') return 4;
-    if (v.includes('good') || v === '3') return 3;
-    if (v.includes('average') || v === '2') return 2;
-    if (v.includes('poor') || v === '1') return 1;
-    return 0;
-}
-
-// Destroy Old Charts Safely
-function clearCharts() {
-    Object.keys(kpiChartsMap).forEach(key => {
-        if (kpiChartsMap[key]) {
-            kpiChartsMap[key].destroy();
-        }
-    });
-    kpiChartsMap = {};
-}
-
-function renderKPIDashboard() {
-    // Only run if the KPI tab is visible
-    const kpiPage = document.getElementById("page-kpi");
-    if (!kpiPage || kpiPage.classList.contains("hidden")) return;
-
-    const safeNum = (val) => {
-        if (typeof val === 'number') return val;
-        if (!val || val === "#REF!" || val === "NaN") return 0;
-        return parseFloat(String(val).replace(/[^0-9.-]+/g, "")) || 0;
-    };
-
-    try {
-        // --- 1. EXECUTIVE SUMMARY ---
-        let accData = window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW.length > 0 ? window.ACCOUNT_OVERVIEW[0] : {};
-        if(document.getElementById('kpi-spend')) document.getElementById('kpi-spend').innerText = `$${safeNum(accData['ActSpend']).toLocaleString()}`;
-        if(document.getElementById('kpi-reach')) document.getElementById('kpi-reach').innerText = safeNum(accData['ActReach']).toLocaleString();
-        if(document.getElementById('kpi-imp')) document.getElementById('kpi-imp').innerText = safeNum(accData['ActImpressions']).toLocaleString();
-
-        // --- 2. PIPELINE SEPARATION ---
-        let brandSay = [];
-        let othersSay = [];
-        let totalOrig = 0;
-        let totalRepurp = 0;
-
-        (window.ALL_CONTENT || []).forEach(c => {
-            if (c.Type === 'Brand Say') {
-                brandSay.push(c);
-                if (c['Is Repurposed'] === 'Yes') totalRepurp++;
-                else totalOrig++;
-            } else if (c.Type === 'Others Say') {
-                othersSay.push(c);
-                totalOrig++; // Others Say is strictly original
-            }
-        });
-
-        if(document.getElementById('kpi-orig-assets')) document.getElementById('kpi-orig-assets').innerText = totalOrig;
-        if(document.getElementById('kpi-repurp-assets')) document.getElementById('kpi-repurp-assets').innerText = totalRepurp;
-
-        // --- DESTROY OLD CHARTS TO PREVENT GLITCHES ---
-        if (window.kpiCharts) {
-            Object.values(window.kpiCharts).forEach(chart => { if(chart) chart.destroy(); });
-        }
-        window.kpiCharts = {};
-
-        // --- CHART 1: BRAND VS OTHERS (Head to Head) ---
-        let avg = (arr, key) => arr.length ? arr.reduce((sum, obj) => sum + safeNum(obj[key]), 0) / arr.length : 0;
-        
-        let ctxHead = document.getElementById('chart-head-to-head');
-        if (ctxHead) {
-            window.kpiCharts.head = new Chart(ctxHead, {
-                type: 'bar',
-                data: {
-                    labels: ['Brand Say', 'Others Say'],
-                    datasets: [{
-                        label: 'Average CQR',
-                        data: [avg(brandSay, 'CQR') || avg(brandSay, 'IGCQR'), avg(othersSay, 'TTCQR') || avg(othersSay, 'IGCQR')],
-                        backgroundColor: ['#4A90E2', '#E1306C']
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: false }
-            });
-        }
-
-        // --- CHART 2: CREATOR SYNERGY ---
-        let creatorMap = {};
-        othersSay.forEach(c => {
-            let name = c['Creator Profile'];
-            if (name) {
-                if (!creatorMap[name]) creatorMap[name] = { IG: 0, TT: 0 };
-                creatorMap[name].IG += safeNum(c['IGViews']);
-                creatorMap[name].TT += safeNum(c['TTViews']);
-            }
-        });
-        
-        let cNames = Object.keys(creatorMap).slice(0, 5); // Top 5
-        let ctxSynergy = document.getElementById('chart-synergy');
-        if (ctxSynergy && cNames.length > 0) {
-            window.kpiCharts.synergy = new Chart(ctxSynergy, {
-                type: 'bar',
-                data: {
-                    labels: cNames,
-                    datasets: [
-                        { label: 'IG Views', data: cNames.map(n => creatorMap[n].IG), backgroundColor: '#E1306C' },
-                        { label: 'TT Views', data: cNames.map(n => creatorMap[n].TT), backgroundColor: '#000000' }
-                    ]
-                },
-                options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } }
-            });
-        }
-
-    } catch (error) {
-        console.error("KPI Dashboard Rendering Error:", error);
-    }
-}
-
-function drawSafeChart(id, type, data, options = {}) {
-    try {
-        const el = document.getElementById(id);
-        if (!el) {
-            console.error(`Target canvas ID target failed lookup: ${id}`);
-            return;
-        }
-        if (kpiCharts[id]) {
-            kpiCharts[id].destroy();
-        }
-        kpiCharts[id] = new Chart(el.getContext('2d'), {
-            type: type,
-            data: data,
-            options: Object.assign({
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: true } }
-            }, options)
-        });
-    } catch(e) {
-        console.error(`Canvas layout instance initiation crashed: ${id}`, e);
-    }
-}
-// Reusable Chart Drawing Function
-function drawChart(canvasId, type, data, extraOptions = {}) {
-    if (kpiCharts[canvasId]) kpiCharts[canvasId].destroy();
-    const ctx = document.getElementById(canvasId).getContext('2d');
-    kpiCharts[canvasId] = new Chart(ctx, {
-        type: type,
-        data: data,
-        options: Object.assign({ responsive: true, maintainAspectRatio: false }, extraOptions)
-    });
+  document.getElementById('ac-confirm-btn').disabled = false;
+  document.getElementById('ac-cancel-btn').disabled = false;
+  document.getElementById('ac-progress-container').style.display = 'none';
+  document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
 loadData();
