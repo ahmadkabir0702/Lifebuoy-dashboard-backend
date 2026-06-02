@@ -541,32 +541,39 @@ function populateFilters() {
   if (ctSel) { ctSel.innerHTML = '<option value="all">All content types</option>'; contentTypes.forEach(ct => { const o = document.createElement('option'); o.value=ct; o.textContent=ct; ctSel.appendChild(o); }); }
 }
 
-function setNav(page) {
-    // Hide all pages first
-    document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+function setNav(page, element) {
+    // 1. Hide both pages safely
+    const creativePage = document.getElementById('page-creatives');
+    const kpiPage = document.getElementById('page-kpi');
     
-    // Show the selected page
-    document.getElementById(`page-${page}`).classList.remove('hidden');
+    if (creativePage) creativePage.classList.add('hidden');
+    if (kpiPage) kpiPage.classList.add('hidden');
+    
+    // 2. Show the selected page
+    const selectedPage = document.getElementById(`page-${page}`);
+    if (selectedPage) selectedPage.classList.remove('hidden');
 
-    // Update active state on sidebar buttons
-    document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
-    document.querySelector(`[onclick="setNav('${page}')"]`).parentElement.classList.add('active');
+    // 3. Update the Topbar Title
+    const titles = { 'creatives': 'Creative Hub', 'kpi': 'Campaign KPIs' };
+    const titleEl = document.getElementById('topbar-title');
+    if (titleEl) titleEl.innerText = titles[page] || '';
 
-    // --- THE CRITICAL FIX ---
-    // Force the KPI dashboard to render its data whenever the tab is clicked
-    if (page === 'kpi') {
+    // 4. Update the active styling on the sidebar buttons
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    if (element) {
+        element.classList.add('active');
+    } else {
+        // Fallback if triggered without 'this'
+        const navLink = document.querySelector(`[onclick="setNav('${page}',this)"]`);
+        if (navLink) navLink.classList.add('active');
+    }
+
+    // 5. Trigger the KPI data render
+    if (page === 'kpi' && typeof renderKPIDashboard === 'function') {
         console.log("KPI Tab clicked! Triggering data render...");
-        console.log("Account Overview Data:", window.ACCOUNT_OVERVIEW);
-        console.log("All Content Data:", window.ALL_CONTENT);
-        
-        if (typeof renderKPIDashboard === 'function') {
-            renderKPIDashboard();
-        } else {
-            console.error("renderKPIDashboard function is missing!");
-        }
+        renderKPIDashboard();
     }
 }
-
 function setPlatform(p, el) {
   currentPlatform = p;
   document.querySelectorAll('.pt').forEach(b=>b.classList.remove('active'));
