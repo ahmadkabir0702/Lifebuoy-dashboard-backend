@@ -541,22 +541,30 @@ function populateFilters() {
   if (ctSel) { ctSel.innerHTML = '<option value="all">All content types</option>'; contentTypes.forEach(ct => { const o = document.createElement('option'); o.value=ct; o.textContent=ct; ctSel.appendChild(o); }); }
 }
 
-function setNav(page, el) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  el.classList.add('active');
-  currentPage = page;
-  
-  if(page === 'creatives') {
-    document.getElementById('page-creatives').classList.remove('hidden');
-    document.getElementById('page-kpi').classList.add('hidden');
-    document.getElementById('topbar-title').innerText = "Creative Hub";
-  } else if(page === 'kpi') {
-    document.getElementById('page-creatives').classList.add('hidden');
-    document.getElementById('page-kpi').classList.remove('hidden');
-    document.getElementById('topbar-title').innerText = "Campaign KPIs";
-    // Fires off your newly updated fallback renderer pipeline
-    renderKPIDashboard();
-  }
+function setNav(page) {
+    // Hide all pages first
+    document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+    
+    // Show the selected page
+    document.getElementById(`page-${page}`).classList.remove('hidden');
+
+    // Update active state on sidebar buttons
+    document.querySelectorAll('.sidebar-nav li').forEach(li => li.classList.remove('active'));
+    document.querySelector(`[onclick="setNav('${page}')"]`).parentElement.classList.add('active');
+
+    // --- THE CRITICAL FIX ---
+    // Force the KPI dashboard to render its data whenever the tab is clicked
+    if (page === 'kpi') {
+        console.log("KPI Tab clicked! Triggering data render...");
+        console.log("Account Overview Data:", window.ACCOUNT_OVERVIEW);
+        console.log("All Content Data:", window.ALL_CONTENT);
+        
+        if (typeof renderKPIDashboard === 'function') {
+            renderKPIDashboard();
+        } else {
+            console.error("renderKPIDashboard function is missing!");
+        }
+    }
 }
 
 function setPlatform(p, el) {
