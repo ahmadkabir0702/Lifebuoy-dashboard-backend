@@ -1371,101 +1371,97 @@ function clearCharts() {
 }
 
 function renderKPIDashboard() {
-    if (!document.getElementById("page-kpi")) return;
+    // Only run if the KPI tab is visible
+    const kpiPage = document.getElementById("page-kpi");
+    if (!kpiPage || kpiPage.classList.contains("hidden")) return;
 
-    // 1. Safe Number Parser to prevent NaN crashes
     const safeNum = (val) => {
         if (typeof val === 'number') return val;
-        if (!val || val === "#REF!") return 0;
-        let cleaned = String(val).replace(/[^0-9.-]+/g, "");
-        return parseFloat(cleaned) || 0;
+        if (!val || val === "#REF!" || val === "NaN") return 0;
+        return parseFloat(String(val).replace(/[^0-9.-]+/g, "")) || 0;
     };
 
-    // 2. DOM Helper
-    const el = (id) => document.getElementById(id);
+    try {
+        // --- 1. EXECUTIVE SUMMARY ---
+        let accData = window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW.length > 0 ? window.ACCOUNT_OVERVIEW[0] : {};
+        if(document.getElementById('kpi-spend')) document.getElementById('kpi-spend').innerText = `$${safeNum(accData['ActSpend']).toLocaleString()}`;
+        if(document.getElementById('kpi-reach')) document.getElementById('kpi-reach').innerText = safeNum(accData['ActReach']).toLocaleString();
+        if(document.getElementById('kpi-imp')) document.getElementById('kpi-imp').innerText = safeNum(accData['ActImpressions']).toLocaleString();
 
-    // --- SECTION 1: EXECUTIVE SUMMARY ---
-    // Pulls from 'Account Overview' using your exact headers
-    let accData = window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW.length > 0 ? window.ACCOUNT_OVERVIEW[0] : {};
-    
-    let actSpend = safeNum(accData['ActSpend']);
-    let kpiSpend = safeNum(accData['KpiSpend']);
-    let spendPct = kpiSpend > 0 ? (actSpend / kpiSpend) * 100 : 0;
-    
-    let actReach = safeNum(accData['ActReach']);
-    let kpiReach = safeNum(accData['kpiReach']);
-    let reachPct = kpiReach > 0 ? (actReach / kpiReach) * 100 : 0;
-    
-    let actImp = safeNum(accData['ActImpressions']);
-    let actFreq = safeNum(accData['ActFrequency']);
+        // --- 2. PIPELINE SEPARATION ---
+        let brandSay = [];
+        let othersSay = [];
+        let totalOrig = 0;
+        let totalRepurp = 0;
 
-    if(el('kpi-spend')) el('kpi-spend').innerText = `$${actSpend.toLocaleString()}`;
-    if(el('kpi-spend-bar')) el('kpi-spend-bar').style.width = `${Math.min(spendPct, 100)}%`;
-    if(el('kpi-reach')) el('kpi-reach').innerText = actReach.toLocaleString();
-    if(el('kpi-reach-bar')) el('kpi-reach-bar').style.width = `${Math.min(reachPct, 100)}%`;
-    if(el('kpi-imp')) el('kpi-imp').innerText = actImp.toLocaleString();
-    if(el('kpi-freq')) el('kpi-freq').innerText = actFreq.toFixed(2);
-
-    // --- SECTION 2: CONTENT PIPELINE ---
-    // Pulls from 'Brand Say Contents' & 'Others Say Contents'
-    let totalOriginal = 0;
-    let totalRepurposed = 0;
-    
-    (window.ALL_CONTENT || []).forEach(c => {
-        if (c['Type'] === 'Brand Say') {
-            if (c['Is Repurposed'] === 'Yes') {
-                totalRepurposed++;
-            } else {
-                totalOriginal++;
-            }
-        } else if (c['Type'] === 'Others Say') {
-            totalOriginal++; // Influencer content is original
-        }
-    });
-
-    if(el('kpi-orig-assets')) el('kpi-orig-assets').innerText = totalOriginal;
-    if(el('kpi-repurp-assets')) el('kpi-repurp-assets').innerText = totalRepurposed;
-
-    // --- CLEANUP OLD CHARTS ---
-    if (window.kpiCharts) {
-        Object.values(window.kpiCharts).forEach(chart => chart.destroy());
-    }
-    window.kpiCharts = {};
-
-    // --- SECTION 3: CREATOR INSIGHTS (Platform Synergy) ---
-    // Extracts specific IG and TT metrics from 'Others Say Contents'
-    let creatorMap = {};
-    (window.ALL_CONTENT || []).forEach(c => {
-        if (c['Type'] === 'Others Say' && c['Creator Profile']) {
-            let name = c['Creator Profile'];
-            if (!creatorMap[name]) creatorMap[name] = { IGViews: 0, TTViews: 0 };
-            
-            creatorMap[name].IGViews += safeNum(c['IGViews']);
-            creatorMap[name].TTViews += safeNum(c['TTViews']);
-        }
-    });
-
-    let creatorNames = Object.keys(creatorMap).slice(0, 10);
-    let igData = creatorNames.map(n => creatorMap[n].IGViews);
-    let ttData = creatorNames.map(n => creatorMap[n].TTViews);
-    
-    let ctxSynergy = document.getElementById('chart-synergy');
-    if (ctxSynergy && creatorNames.length > 0) {
-        window.kpiCharts.synergy = new Chart(ctxSynergy, {
-            type: 'bar',
-            data: {
-                labels: creatorNames,
-                datasets: [
-                    { label: 'IG Views', data: igData, backgroundColor: '#E1306C' },
-                    { label: 'TT Views', data: ttData, backgroundColor: '#00F2FE' }
-                ]
-            },
-            options: { 
-                responsive: true, 
-                maintainAspectRatio: false, 
-                scales: { x: { stacked: true }, y: { stacked: true } } 
+        (window.ALL_CONTENT || []).forEach(c => {
+            if (c.Type === 'Brand Say') {
+                brandSay.push(c);
+                if (c['Is Repurposed'] === 'Yes') totalRepurp++;
+                else totalOrig++;
+            } else if (c.Type === 'Others Say') {
+                othersSay.push(c);
+                totalOrig++; // Others Say is strictly original
             }
         });
+
+        if(document.getElementById('kpi-orig-assets')) document.getElementById('kpi-orig-assets').innerText = totalOrig;
+        if(document.getElementById('kpi-repurp-assets')) document.getElementById('kpi-repurp-assets').innerText = totalRepurp;
+
+        // --- DESTROY OLD CHARTS TO PREVENT GLITCHES ---
+        if (window.kpiCharts) {
+            Object.values(window.kpiCharts).forEach(chart => { if(chart) chart.destroy(); });
+        }
+        window.kpiCharts = {};
+
+        // --- CHART 1: BRAND VS OTHERS (Head to Head) ---
+        let avg = (arr, key) => arr.length ? arr.reduce((sum, obj) => sum + safeNum(obj[key]), 0) / arr.length : 0;
+        
+        let ctxHead = document.getElementById('chart-head-to-head');
+        if (ctxHead) {
+            window.kpiCharts.head = new Chart(ctxHead, {
+                type: 'bar',
+                data: {
+                    labels: ['Brand Say', 'Others Say'],
+                    datasets: [{
+                        label: 'Average CQR',
+                        data: [avg(brandSay, 'CQR') || avg(brandSay, 'IGCQR'), avg(othersSay, 'TTCQR') || avg(othersSay, 'IGCQR')],
+                        backgroundColor: ['#4A90E2', '#E1306C']
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        // --- CHART 2: CREATOR SYNERGY ---
+        let creatorMap = {};
+        othersSay.forEach(c => {
+            let name = c['Creator Profile'];
+            if (name) {
+                if (!creatorMap[name]) creatorMap[name] = { IG: 0, TT: 0 };
+                creatorMap[name].IG += safeNum(c['IGViews']);
+                creatorMap[name].TT += safeNum(c['TTViews']);
+            }
+        });
+        
+        let cNames = Object.keys(creatorMap).slice(0, 5); // Top 5
+        let ctxSynergy = document.getElementById('chart-synergy');
+        if (ctxSynergy && cNames.length > 0) {
+            window.kpiCharts.synergy = new Chart(ctxSynergy, {
+                type: 'bar',
+                data: {
+                    labels: cNames,
+                    datasets: [
+                        { label: 'IG Views', data: cNames.map(n => creatorMap[n].IG), backgroundColor: '#E1306C' },
+                        { label: 'TT Views', data: cNames.map(n => creatorMap[n].TT), backgroundColor: '#000000' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } }
+            });
+        }
+
+    } catch (error) {
+        console.error("KPI Dashboard Rendering Error:", error);
     }
 }
 
