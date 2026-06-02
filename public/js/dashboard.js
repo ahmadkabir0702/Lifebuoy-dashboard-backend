@@ -1322,14 +1322,6 @@ function resetSubmitUI() {
     document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
-// --- KPI Dashboard Rendering Logic ---
-
-// Add a helper mapping to convert text CQR into a numeric score for charting
-const cqrScoreMap = { "Poor": 1, "Average": 2, "Good": 3, "Excellent": 4 };
-
-// Track chart instances so we can destroy them before re-rendering
-let kpiCharts = {};
-
 // --- KPI Dashboard Rendering Logic (Safe Fallback Version) ---
 
 const cqrScoreMap = { "Poor": 1, "Average": 2, "Good": 3, "Excellent": 4 };
