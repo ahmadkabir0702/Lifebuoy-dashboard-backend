@@ -1324,189 +1324,74 @@ function resetSubmitUI() {
 
 // --- KPI Dashboard Rendering Logic (Safe Fallback Version) ---
 
+// --- KPI Dashboard Rendering Logic ---
+
 const cqrScoreMap = { "Poor": 1, "Average": 2, "Good": 3, "Excellent": 4 };
 let kpiCharts = {};
 
 function safeParseNum(val) {
     if (typeof val === 'number') return val;
-    if (!val || val === 'Not Found' || val === '-' || val === '#REF!') return 0;
+    if (!val || val === 'Not Found' || val === '-' || val === '#REF!' || isNaN(parseFloat(val))) return 0;
     return parseFloat(String(val).replace(/[^0-9.-]+/g, "")) || 0;
 }
 
 function renderKPIDashboard() {
-    console.log("Initializing KPI Dashboard Render Pipeline...");
+    console.log("Rendering KPI Dashboard with safe data mapping...");
+
+    // 1. Parse Account Overview (Skip string headers by checking data types)
+    let actSpend = 0, kpiSpend = 0, actReach = 0, kpiReach = 0, actImp = 0, kpiImp = 0, actFreq = 0;
     
-    if (!ACCOUNT_OVERVIEW || ACCOUNT_OVERVIEW.length === 0) {
-        console.warn("KPI Render Aborted: ACCOUNT_OVERVIEW structure empty.");
-        return;
+    if (window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW.length > 0) {
+        // Find the first row that actually contains numbers, not text labels
+        const dataRow = window.ACCOUNT_OVERVIEW.find(row => safeParseNum(row.ActSpend || row.kpiSpend) > 0) || {};
+        
+        actSpend = safeParseNum(dataRow.ActSpend);
+        kpiSpend = safeParseNum(dataRow.KpiSpend || dataRow.kpiSpend);
+        actReach = safeParseNum(dataRow.ActReach);
+        kpiReach = safeParseNum(dataRow.kpiReach);
+        actImp = safeParseNum(dataRow.ActImpressions);
+        kpiImp = safeParseNum(dataRow.kpiImpressions);
+        actFreq = safeParseNum(dataRow.ActFrequency);
     }
 
-    try {
-        // --- SECTION 1: EXECUTIVE SUMMARY ---
-        // Grab values across your specific array columns safely
-        const execData = ACCOUNT_OVERVIEW[0] || {};
-        const actualSpend = safeParseNum(execData.ActSpend || execData[1]);
-        const kpiSpend = safeParseNum(execData.KpiSpend || execData[8]);
-        const actualReach = safeParseNum(execData.ActReach || execData[2]);
-        const kpiReach = safeParseNum(execData.kpiReach || execData[9]);
-        const actualImp = safeParseNum(execData.ActImpressions || execData[3]);
-        const kpiImp = safeParseNum(execData.kpiImpressions || execData[10]);
-        const actualFreq = safeParseNum(execData.ActFrequency || execData[4]);
+    // Update Section 1 UI
+    document.getElementById('kpi-spend-val').innerText = `$${actSpend.toLocaleString()}`;
+    document.getElementById('kpi-spend-sub').innerText = kpiSpend > 0 ? `${((actSpend / kpiSpend) * 100).toFixed(1)}% of Planned` : "No KPI set";
+    
+    document.getElementById('kpi-reach-val').innerText = actReach.toLocaleString();
+    document.getElementById('kpi-reach-sub').innerText = kpiReach > 0 ? `${((actReach / kpiReach) * 100).toFixed(1)}% of Planned Target` : "No KPI set";
+    
+    document.getElementById('kpi-imp-val').innerText = actImp.toLocaleString();
+    document.getElementById('kpi-imp-sub').innerText = `Target: ${kpiImp.toLocaleString()}`;
+    
+    document.getElementById('kpi-freq-val').innerText = actFreq.toFixed(2);
 
-        document.getElementById('kpi-spend-val').innerText = `$${actualSpend.toLocaleString()}`;
-        if (kpiSpend > 0) {
-            document.getElementById('kpi-spend-sub').innerText = `${((actualSpend / kpiSpend) * 100).toFixed(1)}% of Planned ($${kpiSpend.toLocaleString()})`;
-            document.getElementById('kpi-spend-bar').style.width = `${Math.min((actualSpend / kpiSpend) * 100, 100)}%`;
+    // 2. Parse Content Pipeline
+    let originalCount = 0;
+    let repurposedCount = 0;
+    
+    (window.ALL_CONTENT || []).forEach(c => {
+        // Safely check Is Repurposed (only exists on Brand Say)
+        const isRepurposed = c["Is Repurposed"] ? c["Is Repurposed"].toString().trim().toLowerCase() : "no";
+        
+        if (isRepurposed === "yes") {
+            repurposedCount++;
+        } else {
+            originalCount++;
         }
+    });
 
-        document.getElementById('kpi-reach-val').innerText = actualReach.toLocaleString();
-        if (kpiReach > 0) {
-            document.getElementById('kpi-reach-sub').innerText = `${((actualReach / kpiReach) * 100).toFixed(1)}% of Planned Target`;
-            document.getElementById('kpi-reach-bar').style.width = `${Math.min((actualReach / kpiReach) * 100, 100)}%`;
-        }
+    document.getElementById('kpi-orig-val').innerText = originalCount;
+    document.getElementById('kpi-repurp-val').innerText = repurposedCount;
 
-        document.getElementById('kpi-imp-val').innerText = actualImp.toLocaleString();
-        document.getElementById('kpi-imp-sub').innerText = `Target: ${kpiImp.toLocaleString()}`;
-        document.getElementById('kpi-freq-val').innerText = actualFreq > 0 ? actualFreq.toFixed(2) : "0.00";
+    // Destroy existing charts to prevent canvas glitches
+    Object.keys(kpiCharts).forEach(key => {
+        if (kpiCharts[key]) kpiCharts[key].destroy();
+    });
 
-        // --- SECTION 2: PIPELINE ASSETS SPLIT ---
-        // Safe mapping fallback for properties regardless of data parsing schemas
-        const brandSay = (ALL_CONTENT || []).filter(c => String(c.type || c.Type).toLowerCase().includes('brand'));
-        const othersSay = (ALL_CONTENT || []).filter(c => String(c.type || c.Type).toLowerCase().includes('other'));
-
-        document.getElementById('kpi-orig-val').innerText = (ALL_CONTENT || []).filter(c => String(c.isRepurposed || c['Is Repurposed']).toLowerCase() === 'no').length;
-        document.getElementById('kpi-repurp-val').innerText = (ALL_CONTENT || []).filter(c => String(c.isRepurposed || c['Is Repurposed']).toLowerCase() === 'yes').length;
-        document.getElementById('kpi-valid-val').innerText = (ALL_CONTENT || []).filter(c => ['ready', 'validated', 'active'].includes(String(c.validation || c.AdStatus || c.Status).toLowerCase())).length;
-
-        // Dynamic key helper to pull keys that might vary between sheets
-        const getAvgMetric = (arr, possibleKeys) => {
-            const validRows = arr.filter(c => {
-                for (let k of possibleKeys) {
-                    if (c[k] !== undefined && safeParseNum(c[k]) > 0) return true;
-                }
-                return false;
-            });
-            if (!validRows.length) return 0;
-            const sum = validRows.reduce((s, c) => {
-                for (let k of possibleKeys) {
-                    if (c[k] !== undefined) return s + safeParseNum(c[k]);
-                }
-                return s;
-            }, 0);
-            return sum / validRows.length;
-        };
-
-        const getAvgCQR = (arr) => {
-            const validRows = arr.filter(c => cqrScoreMap[c.cqr || c.CQR]);
-            if (!validRows.length) return 0;
-            return validRows.reduce((s, c) => s + cqrScoreMap[c.cqr || c.CQR], 0) / validRows.length;
-        };
-
-        // Render Head to Head
-        const bHook = getAvgMetric(brandSay, ['hookRate', 'Hook Rate %', 'Hook']);
-        const bHold = getAvgMetric(brandSay, ['holdRate', 'Hold Rate %', 'Hold Rate']);
-        const oHook = getAvgMetric(othersSay, ['hookRate', 'Hook Rate %', 'Hook']);
-        const oHold = getAvgMetric(othersSay, ['holdRate', 'Hold Rate %', 'Hold Rate']);
-
-        drawSafeChart('chart-head-to-head', 'bar', {
-            labels: ['Hook Rate %', 'Hold Rate %', 'CQR Score (1-4)'],
-            datasets: [
-                { label: 'Brand Say', backgroundColor: '#3b82f6', data: [bHook, bHold, getAvgCQR(brandSay)] },
-                { label: 'Others Say', backgroundColor: '#f59e0b', data: [oHook, oHold, getAvgCQR(othersSay)] }
-            ]
-        });
-
-        // Duration Level Splitting Insights
-        const extractDurationSplit = (arr) => {
-            const dKey = 'duration';
-            const hKeys = ['holdRate', 'Hold Rate %', 'Hold Rate'];
-            const f1 = arr.filter(c => safeParseNum(c[dKey] || c['Duration'] || c['Video Duration'] || c['Duration (s)']) < 10);
-            const f2 = arr.filter(c => {
-                let sec = safeParseNum(c[dKey] || c['Duration'] || c['Video Duration'] || c['Duration (s)']);
-                return sec >= 10 && sec <= 15;
-            });
-            const f3 = arr.filter(c => safeParseNum(c[dKey] || c['Duration'] || c['Video Duration'] || c['Duration (s)']) > 15);
-
-            return [getAvgMetric(f1, hKeys), getAvgMetric(f2, hKeys), getAvgMetric(f3, hKeys)];
-        };
-
-        drawSafeChart('chart-duration', 'bar', {
-            labels: ['Short (<10s)', 'Mid (10-15s)', 'Long (15s+)'],
-            datasets: [
-                { label: 'Brand Say Hold', backgroundColor: '#8b5cf6', data: extractDurationSplit(brandSay) },
-                { label: 'Others Say Hold', backgroundColor: '#10b981', data: extractDurationSplit(othersSay) }
-            ]
-        });
-
-        // --- SECTION 3: CREATOR MAP PROCESSING ---
-        const creatorDataObj = {};
-        othersSay.forEach(c => {
-            let pStr = c.creatorProfile || c['Creator Profile'];
-            if (!pStr || typeof pStr !== 'string') return;
-            const handle = pStr.split('/').filter(Boolean).pop() || "Unknown";
-            
-            if (!creatorDataObj[handle]) creatorDataObj[handle] = { total: 0, watchTimeSum: 0, cqrSum: 0, counts: 0 };
-            creatorDataObj[handle].total += 1;
-            
-            let wt = safeParseNum(c.watchTime || c['TTAvg Watch Time (s)'] || c['IGAvg Watch Time (s)']);
-            if (wt > 0) { creatorDataObj[handle].watchTimeSum += wt; creatorDataObj[handle].counts += 1; }
-            
-            let score = cqrScoreMap[c.cqr || c.CQR];
-            if (score) creatorDataObj[handle].cqrSum += score;
-        });
-
-        const creatorList = Object.keys(creatorDataObj);
-        const scatterData = creatorList.map(name => ({
-            x: creatorDataObj[name].total,
-            y: creatorDataObj[name].total ? (creatorDataObj[name].cqrSum / creatorDataObj[name].total) : 0,
-            label: name
-        }));
-
-        drawSafeChart('chart-creator-scatter', 'scatter', {
-            datasets: [{
-                label: 'Profiles Impact',
-                backgroundColor: '#ec4899',
-                data: scatterData
-            }]
-        }, {
-            scales: {
-                x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Total Videos Output' } },
-                y: { min: 0, max: 4, title: { display: true, text: 'Quality CQR Score' } }
-            }
-        });
-
-        const retentionData = creatorList.map(name => creatorDataObj[name].counts ? (creatorDataObj[name].watchTimeSum / creatorDataObj[name].counts) : 0);
-        drawSafeChart('chart-creator-retention', 'bar', {
-            labels: creatorList,
-            datasets: [{ label: 'Avg Watch Duration (sec)', backgroundColor: '#06b6d4', data: retentionData }]
-        });
-
-        // --- SECTION 4: PAID PLATFORM ---
-        const metaPaid = (ALL_CONTENT || []).filter(c => String(c.platform || c.Platform).toLowerCase().includes('meta'));
-        const ttPaid = (ALL_CONTENT || []).filter(c => String(c.platform || c.Platform).toLowerCase().includes('tt') || String(c.platform || c.Platform).toLowerCase().includes('tiktok'));
-
-        const metaSpend = getAvgMetric(metaPaid, ['spend', 'Spend']);
-        const metaReach = getAvgMetric(metaPaid, ['reach', 'Reach']) || 1;
-        const ttSpend = getAvgMetric(ttPaid, ['spend', 'Spend']);
-        const ttReach = getAvgMetric(ttPaid, ['reach', 'Reach']) || 1;
-
-        const metaCPR = (metaSpend / metaReach) * 1000;
-        const ttCPR = (ttSpend / ttReach) * 1000;
-
-        drawSafeChart('chart-paid-cost', 'bar', {
-            labels: ['Meta Ad Platform', 'TikTok Ad Platform'],
-            datasets: [{ label: 'Cost Per 1,000 Reach ($)', backgroundColor: '#ef4444', data: [metaCPR, ttCPR] }]
-        });
-
-        drawSafeChart('chart-paid-attention', 'bar', {
-            labels: ['Meta Ad Platform', 'TikTok Ad Platform'],
-            datasets: [{ label: 'View Through Retention (VTR %)', backgroundColor: '#3b82f6', data: [getAvgMetric(metaPaid, ['vtr', 'VTR %']), getAvgMetric(ttPaid, ['vtr', 'VTR %'])] }]
-        });
-
-    } catch (err) {
-        console.error("Critical Failure detected within KPI dashboard script rendering flow:", err);
-    }
+    // We can add the Chart.js rendering blocks here once the UI populates correctly.
 }
+
 
 function drawSafeChart(id, type, data, options = {}) {
     try {
