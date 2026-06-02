@@ -1371,230 +1371,100 @@ function clearCharts() {
 }
 
 function renderKPIDashboard() {
-    console.log("Building dynamic KPI Dashboard...");
-    clearCharts();
+    if (!document.getElementById("page-kpi")) return;
 
-    // --- 1. Executive Summary ---
-    let actSp = 0, kpiSp = 0, actRe = 0, kpiRe = 0, actIm = 0, kpiIm = 0, actFr = 0;
-    
-    if (window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW.length > 0) {
-        // Aggregate all monthly rows available in the overview
-        window.ACCOUNT_OVERVIEW.forEach(row => {
-            actSp += safeNumData(row.ActSpend || row.kpiSpend || 0); 
-            kpiSp += safeNumData(row.KpiSpend || row.kpiSpend || 0);
-            actRe += safeNumData(row.ActReach || 0);
-            kpiRe += safeNumData(row.kpiReach || row.KpiReach || 0);
-            actIm += safeNumData(row.ActImpressions || 0);
-            kpiIm += safeNumData(row.kpiImpressions || row.KpiImpressions || 0);
-        });
-        actFr = actRe > 0 ? (actIm / actRe) : 0;
-    }
+    // 1. Safe Number Parser to prevent NaN crashes
+    const safeNum = (val) => {
+        if (typeof val === 'number') return val;
+        if (!val || val === "#REF!") return 0;
+        let cleaned = String(val).replace(/[^0-9.-]+/g, "");
+        return parseFloat(cleaned) || 0;
+    };
 
-    if(document.getElementById('kpi-spend-val')) {
-        document.getElementById('kpi-spend-val').innerText = `$${actSp.toLocaleString()}`;
-        document.getElementById('kpi-spend-sub').innerText = kpiSp ? `${((actSp/kpiSp)*100).toFixed(1)}% of Planned` : 'No Target Set';
-        document.getElementById('kpi-reach-val').innerText = actRe.toLocaleString();
-        document.getElementById('kpi-reach-sub').innerText = kpiRe ? `${((actRe/kpiRe)*100).toFixed(1)}% of Planned` : 'No Target Set';
-        document.getElementById('kpi-imp-val').innerText = actIm.toLocaleString();
-        document.getElementById('kpi-imp-sub').innerText = `Target: ${kpiIm.toLocaleString()}`;
-        document.getElementById('kpi-freq-val').innerText = actFr.toFixed(2);
-    }
+    // 2. DOM Helper
+    const el = (id) => document.getElementById(id);
 
-    // --- 2. Data Structuring for Charts ---
-    let orig = 0, repurp = 0, valid = 0;
+    // --- SECTION 1: EXECUTIVE SUMMARY ---
+    // Pulls from 'Account Overview' using your exact headers
+    let accData = window.ACCOUNT_OVERVIEW && window.ACCOUNT_OVERVIEW.length > 0 ? window.ACCOUNT_OVERVIEW[0] : {};
     
-    let brandHook = [], brandHold = [], brandCqr = [];
-    let othersHook = [], othersHold = [], othersCqr = [];
+    let actSpend = safeNum(accData['ActSpend']);
+    let kpiSpend = safeNum(accData['KpiSpend']);
+    let spendPct = kpiSpend > 0 ? (actSpend / kpiSpend) * 100 : 0;
     
-    let brandDur = { short: [], mid: [], long: [] };
-    let othersDur = { short: [], mid: [], long: [] };
+    let actReach = safeNum(accData['ActReach']);
+    let kpiReach = safeNum(accData['kpiReach']);
+    let reachPct = kpiReach > 0 ? (actReach / kpiReach) * 100 : 0;
     
-    let creatorMap = {};
-    let paidMeta = { vtr: [], watch: [] };
-    let paidTT = { vtr: [], watch: [] };
+    let actImp = safeNum(accData['ActImpressions']);
+    let actFreq = safeNum(accData['ActFrequency']);
 
+    if(el('kpi-spend')) el('kpi-spend').innerText = `$${actSpend.toLocaleString()}`;
+    if(el('kpi-spend-bar')) el('kpi-spend-bar').style.width = `${Math.min(spendPct, 100)}%`;
+    if(el('kpi-reach')) el('kpi-reach').innerText = actReach.toLocaleString();
+    if(el('kpi-reach-bar')) el('kpi-reach-bar').style.width = `${Math.min(reachPct, 100)}%`;
+    if(el('kpi-imp')) el('kpi-imp').innerText = actImp.toLocaleString();
+    if(el('kpi-freq')) el('kpi-freq').innerText = actFreq.toFixed(2);
+
+    // --- SECTION 2: CONTENT PIPELINE ---
+    // Pulls from 'Brand Say Contents' & 'Others Say Contents'
+    let totalOriginal = 0;
+    let totalRepurposed = 0;
+    
     (window.ALL_CONTENT || []).forEach(c => {
-        const isBrand = String(c.type || c.Type || '').toLowerCase().includes('brand');
-        const isOthers = String(c.type || c.Type || '').toLowerCase().includes('others');
-        const isRepurposed = String(c["Is Repurposed"] || c.isRepurposed || '').toLowerCase() === 'yes';
-        
-        const finalCqr = Math.max(convertCQR(c.cqr), convertCQR(c.TTCQR), convertCQR(c.IGCQR));
-        const isReady = String(c["Action Status"] || c.adStatus || '').toLowerCase().includes('ready') || finalCqr >= 3;
-        
-        if (isBrand || isOthers) {
-            if (isRepurposed) repurp++; else orig++;
-            if (isReady) valid++;
-        }
-
-        const dur = safeNumData(c.duration || c['Duration (s)']);
-        const hook = safeNumData(c.hookRate);
-        const hold = safeNumData(c.holdRate);
-        const watch = safeNumData(c.watchTime || c.TTAvgWatchTime || c.IGAvgWatchTime);
-        const vtr = safeNumData(c.vtr);
-        
-        if (isBrand) {
-            if (hook > 0) brandHook.push(hook);
-            if (hold > 0) brandHold.push(hold);
-            if (finalCqr > 0) brandCqr.push(finalCqr);
-            
-            if (dur > 0 && dur < 10) brandDur.short.push(finalCqr);
-            else if (dur >= 10 && dur <= 15) brandDur.mid.push(finalCqr);
-            else if (dur > 15) brandDur.long.push(finalCqr);
-        } else if (isOthers) {
-            if (hook > 0) othersHook.push(hook);
-            if (hold > 0) othersHold.push(hold);
-            if (finalCqr > 0) othersCqr.push(finalCqr);
-            
-            if (dur > 0 && dur < 10) othersDur.short.push(finalCqr);
-            else if (dur >= 10 && dur <= 15) othersDur.mid.push(finalCqr);
-            else if (dur > 15) othersDur.long.push(finalCqr);
-            
-            // Map Individual Creators
-            const creator = c.creatorProfile || c['Creator Profile'] || 'Unknown';
-            if (creator && creator !== 'Unknown' && creator !== '#REF!') {
-                if (!creatorMap[creator]) creatorMap[creator] = { videos: 0, cqrSum: 0, ttV: 0, igV: 0, watchSum: 0, watchCount: 0, hookSum: 0, hookCount: 0 };
-                creatorMap[creator].videos++;
-                creatorMap[creator].cqrSum += finalCqr;
-                creatorMap[creator].ttV += safeNumData(c.TTViews || c.ttViews);
-                creatorMap[creator].igV += safeNumData(c.IGViews || c.igViews);
-                if (watch > 0) { creatorMap[creator].watchSum += watch; creatorMap[creator].watchCount++; }
-                if (hook > 0) { creatorMap[creator].hookSum += hook; creatorMap[creator].hookCount++; }
+        if (c['Type'] === 'Brand Say') {
+            if (c['Is Repurposed'] === 'Yes') {
+                totalRepurposed++;
+            } else {
+                totalOriginal++;
             }
-        }
-        
-        if (c._meta) {
-            if (vtr > 0) paidMeta.vtr.push(vtr);
-            if (watch > 0) paidMeta.watch.push(watch);
-        }
-        if (c._tt) {
-            if (vtr > 0) paidTT.vtr.push(vtr);
-            if (watch > 0) paidTT.watch.push(watch);
+        } else if (c['Type'] === 'Others Say') {
+            totalOriginal++; // Influencer content is original
         }
     });
 
-    if(document.getElementById('kpi-orig-val')) {
-        document.getElementById('kpi-orig-val').innerText = orig;
-        document.getElementById('kpi-repurp-val').innerText = repurp;
-        document.getElementById('kpi-valid-val').innerText = valid;
+    if(el('kpi-orig-assets')) el('kpi-orig-assets').innerText = totalOriginal;
+    if(el('kpi-repurp-assets')) el('kpi-repurp-assets').innerText = totalRepurposed;
+
+    // --- CLEANUP OLD CHARTS ---
+    if (window.kpiCharts) {
+        Object.values(window.kpiCharts).forEach(chart => chart.destroy());
     }
+    window.kpiCharts = {};
 
-    const avg = (arr) => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+    // --- SECTION 3: CREATOR INSIGHTS (Platform Synergy) ---
+    // Extracts specific IG and TT metrics from 'Others Say Contents'
+    let creatorMap = {};
+    (window.ALL_CONTENT || []).forEach(c => {
+        if (c['Type'] === 'Others Say' && c['Creator Profile']) {
+            let name = c['Creator Profile'];
+            if (!creatorMap[name]) creatorMap[name] = { IGViews: 0, TTViews: 0 };
+            
+            creatorMap[name].IGViews += safeNum(c['IGViews']);
+            creatorMap[name].TTViews += safeNum(c['TTViews']);
+        }
+    });
 
-    // --- CHART: Performance Head-to-Head ---
-    if(document.getElementById('chart-h2h')) {
-        const ctxH2H = document.getElementById('chart-h2h').getContext('2d');
-        kpiChartsMap['h2h'] = new Chart(ctxH2H, {
-            type: 'bar',
-            data: {
-                labels: ['Avg Hook Rate %', 'Avg Hold Rate %', 'Avg CQR Score'],
-                datasets: [
-                    { label: 'Brand Say', data: [avg(brandHook)*100, avg(brandHold)*100, avg(brandCqr)], backgroundColor: '#7c3aed' },
-                    { label: 'Others Say', data: [avg(othersHook)*100, avg(othersHold)*100, avg(othersCqr)], backgroundColor: '#0891b2' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
-    }
-
-    // --- CHART: Duration Insights ---
-    if(document.getElementById('chart-duration')) {
-        const ctxDur = document.getElementById('chart-duration').getContext('2d');
-        kpiChartsMap['dur'] = new Chart(ctxDur, {
-            type: 'bar',
-            data: {
-                labels: ['Short (<10s)', 'Mid (10-15s)', 'Long (15s+)'],
-                datasets: [
-                    { label: 'Brand Say CQR', data: [avg(brandDur.short), avg(brandDur.mid), avg(brandDur.long)], backgroundColor: '#7c3aed' },
-                    { label: 'Others Say CQR', data: [avg(othersDur.short), avg(othersDur.mid), avg(othersDur.long)], backgroundColor: '#10b981' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
-    }
-
-    // --- SECTION 3: Creator Insights ---
-    const creators = Object.keys(creatorMap);
-    const cleanName = (url) => url.replace('https://www.instagram.com/', '').replace('https://www.tiktok.com/@', '').split('/')[0].substring(0, 15);
-    const creatorLabels = creators.map(cleanName);
+    let creatorNames = Object.keys(creatorMap).slice(0, 10);
+    let igData = creatorNames.map(n => creatorMap[n].IGViews);
+    let ttData = creatorNames.map(n => creatorMap[n].TTViews);
     
-    if(document.getElementById('chart-creator-platform') && creators.length > 0) {
-        const ctxPlat = document.getElementById('chart-creator-platform').getContext('2d');
-        kpiChartsMap['plat'] = new Chart(ctxPlat, {
+    let ctxSynergy = document.getElementById('chart-synergy');
+    if (ctxSynergy && creatorNames.length > 0) {
+        window.kpiCharts.synergy = new Chart(ctxSynergy, {
             type: 'bar',
             data: {
-                labels: creatorLabels,
+                labels: creatorNames,
                 datasets: [
-                    { label: 'TikTok Views', data: creators.map(c => creatorMap[c].ttV), backgroundColor: '#ff0050' },
-                    { label: 'IG Views', data: creators.map(c => creatorMap[c].igV), backgroundColor: '#1877f2' }
+                    { label: 'IG Views', data: igData, backgroundColor: '#E1306C' },
+                    { label: 'TT Views', data: ttData, backgroundColor: '#00F2FE' }
                 ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true } } }
-        });
-    }
-
-    if(document.getElementById('chart-creator-retention') && creators.length > 0) {
-        const ctxRet = document.getElementById('chart-creator-retention').getContext('2d');
-        kpiChartsMap['ret'] = new Chart(ctxRet, {
-            type: 'bar',
-            data: {
-                labels: creatorLabels,
-                datasets: [
-                    { label: 'Avg Watch Time (s)', data: creators.map(c => creatorMap[c].watchCount ? creatorMap[c].watchSum / creatorMap[c].watchCount : 0), backgroundColor: '#f59e0b' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' }
-        });
-    }
-    
-    if(document.getElementById('chart-creator-hook') && creators.length > 0) {
-        const ctxHook = document.getElementById('chart-creator-hook').getContext('2d');
-        kpiChartsMap['hook'] = new Chart(ctxHook, {
-            type: 'bar',
-            data: {
-                labels: creatorLabels,
-                datasets: [
-                    { label: 'Hook Rate %', data: creators.map(c => creatorMap[c].hookCount ? (creatorMap[c].hookSum / creatorMap[c].hookCount) * 100 : 0), backgroundColor: '#ef4444' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
-        });
-    }
-    
-    if(document.getElementById('chart-creator-consistency') && creators.length > 0) {
-        const ctxCons = document.getElementById('chart-creator-consistency').getContext('2d');
-        kpiChartsMap['cons'] = new Chart(ctxCons, {
-            type: 'scatter',
-            data: {
-                datasets: creators.map((c, i) => ({
-                    label: cleanName(c),
-                    data: [{ x: creatorMap[c].videos, y: creatorMap[c].cqrSum / creatorMap[c].videos }],
-                    backgroundColor: ['#7c3aed', '#0891b2', '#10b981', '#f59e0b', '#ef4444'][i % 5],
-                    pointRadius: 8
-                }))
             },
             options: { 
-                responsive: true, maintainAspectRatio: false, 
-                scales: { 
-                    x: { title: { display: true, text: 'Number of Videos' }, ticks: { stepSize: 1 } },
-                    y: { title: { display: true, text: 'Avg CQR Score (1-4)' }, min: 0, max: 4 }
-                } 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                scales: { x: { stacked: true }, y: { stacked: true } } 
             }
-        });
-    }
-    
-    // --- SECTION 4: Paid Platform Efficiency ---
-    if(document.getElementById('chart-paid-attention')) {
-        const ctxPaid = document.getElementById('chart-paid-attention').getContext('2d');
-        kpiChartsMap['paid'] = new Chart(ctxPaid, {
-            type: 'bar',
-            data: {
-                labels: ['Meta', 'TikTok'],
-                datasets: [
-                    { label: 'Avg VTR %', data: [avg(paidMeta.vtr)*100, avg(paidTT.vtr)*100], backgroundColor: '#3b82f6' },
-                    { label: 'Avg Watch Time (s)', data: [avg(paidMeta.watch), avg(paidTT.watch)], backgroundColor: '#111827' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false }
         });
     }
 }
