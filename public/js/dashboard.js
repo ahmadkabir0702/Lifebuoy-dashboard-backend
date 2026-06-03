@@ -1026,13 +1026,17 @@ function openAddCreativeModal() {
     : ALL_CONTENT.length > 0
       ? [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))]
       : [];
-
-  // Emergency fallback: if still empty, show a text input instead
+  campaignSelect.innerHTML = '<option value="" disabled selected>Select Campaign</option>';
   if (campaigns.length === 0) {
-    const campaignSelect = document.getElementById('ac-campaign');
-    campaignSelect.outerHTML = '<input type="text" id="ac-campaign" class="modal-input" style="margin-bottom:10px;" placeholder="Type campaign name..." required>';
-    return;
+    campaignSelect.innerHTML += '<option value="Cool Fresh">Cool Fresh</option>';
+  } else {
+    campaigns.forEach(c => { campaignSelect.innerHTML += `<option value="${c}">${c}</option>`; });
   }
+  const orgIdSelect = document.getElementById('ac-original-id');
+  const creativeIds = [...new Set(ALL_CONTENT.map(c => c.id).filter(id => id))];
+  orgIdSelect.innerHTML = '<option value="" disabled selected>Select Original Creative ID</option>';
+  creativeIds.forEach(id => { orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`; });
+}
 
 function closeAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'none';
