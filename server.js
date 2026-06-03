@@ -55,17 +55,23 @@ app.post('/api/add-creative', async (req, res) => {
             
             if (fileState.state !== 'FAILED') {
                 console.log(`Generating AI Breakdown...`);
-                const prompt = `
-                Watch this video. Extract the following:
-                1. A catchy 'Content Hook' (a 1-sentence summary of the visual hook).
-                2. Description of the 1st Segment (0-25% of the video).
-                3. Description of the 2nd Segment (25-50% of the video).
-                4. Description of the 3rd Segment (50-75% of the video).
-                5. Description of the 4th Segment (75-100% of the video).
-                
-                Return the exact output as a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". Do not use markdown code blocks.
-                `;
+               const prompt = `
+Watch this video carefully. Extract the following:
 
+1. "hook": A 1-2 sentence description of the opening hook — what visually happens in the first 2-3 seconds, the emotion or tension it creates, and why it stops the scroll.
+
+2. "seg1": (0–25%) Describe the setting, who appears, what action or message is shown, the tone, and any key text or audio cues.
+
+3. "seg2": (25–50%) Describe how the narrative or demonstration develops — what new information, emotion, or visual is introduced and how it builds on the hook.
+
+4. "seg3": (50–75%) Describe the core message or product moment — what is being shown or said, how it connects to the brand, and the viewer's emotional journey at this point.
+
+5. "seg4": (75–100%) Describe the closing — the call to action, final visual, any end card or branding, and the overall feeling the video leaves the viewer with.
+
+Keep each description to 2-3 sentences. Be specific about visuals, on-screen text, and tone. Do not use generic filler phrases.
+
+Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.
+`;
                 const result = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
                     contents: [{ role: 'user', parts: [{ fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } }, { text: prompt }] }],
