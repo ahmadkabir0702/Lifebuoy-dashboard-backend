@@ -16,15 +16,28 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'changeme-set-in-env',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 8 * 60 * 60 * 1000 }
+  cookie: { 
+    maxAge: 8 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: 'lax'
+  }
 }));
 
+// Auth middleware — skips login/logout routes
 function requireAuth(req, res, next) {
+  if (req.path === '/login' || req.path === '/logout') return next();
   if (req.session && req.session.user) return next();
+  // API calls get 401, not redirect
+  if (req.path.startsWith('/api/')) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
   res.redirect('/login');
 }
 
+app.use(requireAuth);
+
 app.get('/login', (req, res) => {
+  if (req.session && req.session.user) return res.redirect('/');
   res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -72,12 +85,21 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', (req, res) => {
-  const { username, password } = req.body;
+  const username = (req.body.username || '').trim();
+  const password = (req.body.password || '').trim();
+  console.log('Login attempt for:', username);
   const envKey = 'USER_' + username;
   const storedPassword = process.env[envKey];
+  console.log('Env key:', envKey, '| Match:', storedPassword === password);
   if (storedPassword && storedPassword === password) {
     req.session.user = username;
-    res.redirect('/');
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.redirect('/login?error=1');
+      }
+      res.redirect('/');
+    });
   } else {
     res.redirect('/login?error=1');
   }
@@ -88,6 +110,7 @@ app.get('/logout', (req, res) => {
   res.redirect('/login');
 });
 
+// Serve static files — only after auth middleware
 app.use(express.static(path.join(__dirname, 'public')));
 
 const auth = new google.auth.JWT(
@@ -100,7 +123,7 @@ const auth = new google.auth.JWT(
 const sheets = google.sheets({ version: 'v4', auth });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-app.post('/api/add-creative', requireAuth, async (req, res) => {
+app.post('/api/add-creative', async (req, res) => {
   const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
   const safeCampaignName = campaign.replace(/\s+/g, '');
   const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
@@ -203,7 +226,7 @@ Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No 
   }
 });
 
-app.get('/api/dashboard-data', requireAuth, async (req, res) => {
+app.get('/api/dashboard-data', async (req, res) => {
   try {
     const sheetNames = [
       'Post performance Meta [Paid]',
@@ -235,7 +258,7 @@ app.get('/api/dashboard-data', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/update-action', requireAuth, async (req, res) => {
+app.post('/api/update-action', async (req, res) => {
   try {
     const { updateData } = req.body;
     const response = await sheets.spreadsheets.values.batchUpdate({
@@ -252,7 +275,7 @@ app.post('/api/update-action', requireAuth, async (req, res) => {
   }
 });
 
-app.get('*', requireAuth, (req, res) => {
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
