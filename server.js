@@ -105,6 +105,10 @@ app.post('/login', (req, res) => {
   }
 });
 
+app.post('/api/test-gemini', async (req, res) => {
+  const { videoUrl, password } = req.body;
+  if (password !== process.env.TEST_SECRET) return res.status(401).json({ error: 'Wrong password' });
+
 app.get('/logout', (req, res) => {
   req.session.destroy();
   res.redirect('/login');
