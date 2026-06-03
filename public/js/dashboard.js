@@ -443,11 +443,23 @@ function parseAccountOverview(rows) {
 
 function parseFilters(rows) {
   const campaigns = [];
-  rows.forEach(row => {
-    const val = String(row[4] || '').trim();
-    if (val && val !== 'Campaign FIlters' && val !== 'Campaign Filters') {
-      campaigns.push(val);
-    }
+  if (!rows || rows.length === 0) return campaigns;
+  // Find which column has 'Campaign Filters' header, then read values below it
+  let campColIndex = -1;
+  let campHeaderRow = -1;
+  rows.forEach((row, ri) => {
+    row.forEach((cell, ci) => {
+      if (String(cell).toLowerCase().includes('campaign') && String(cell).toLowerCase().includes('filter')) {
+        campColIndex = ci;
+        campHeaderRow = ri;
+      }
+    });
+  });
+  if (campColIndex === -1) return campaigns;
+  // Read all rows after the header row in that column
+  rows.slice(campHeaderRow + 1).forEach(row => {
+    const val = String(row[campColIndex] || '').trim();
+    if (val && val !== 'undefined') campaigns.push(val);
   });
   return campaigns;
 }
