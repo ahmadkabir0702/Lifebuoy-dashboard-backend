@@ -8,7 +8,7 @@ const { GoogleGenAI } = require('@google/genai');
 const session = require('express-session');
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -33,6 +33,8 @@ function requireAuth(req, res, next) {
   }
   res.redirect('/login');
 }
+
+app.options('*', cors({ origin: '*' }));
 
 app.use(requireAuth);
 
