@@ -229,19 +229,15 @@ app.post('/api/add-creative', async (req, res) => {
 Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.`;
 
 const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [
-        { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
-        { text: prompt }
-      ]}],
-      config: { responseMimeType: "application/json", maxOutputTokens: 2000 }
-    });
-const cleanText = result.text.replace(/```json|```/g, '').trim();
-        const analysisData = JSON.parse(cleanText);
-    res.json({ success: true, result: parsed });
-
-const rawText = result.text.replace(/```json|```/g, '').trim();
-        const analysisData = JSON.parse(rawText);
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [
+            { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+            { text: prompt }
+          ]}],
+          config: { responseMimeType: "application/json", maxOutputTokens: 2000 }
+        });
+        const analysisData = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+        const hook = analysisData.hook || "";
         const seg1 = analysisData.seg1 || "";
         const seg2 = analysisData.seg2 || "";
         const seg3 = analysisData.seg3 || "";
