@@ -1095,9 +1095,9 @@ setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
     });
     clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
 
-  if (result.success) {
-      const aiMsg = result.aiGenerated ? ' AI descriptions generated.' : ' (No AI — video may be unsupported.)';
-      setProgress(100, 'Done! Creative added.' + aiMsg, '#16a34a');
+if (result.success) {
+      const aiMsg = result.aiPending ? ' AI descriptions are being generated in the background — check the sheet in ~1 minute.' : '';
+      setProgress(100, '✅ Row added to sheet!' + aiMsg, '#16a34a');
       progressBar.style.background = '#16a34a';
       setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 3000);
     } else {
