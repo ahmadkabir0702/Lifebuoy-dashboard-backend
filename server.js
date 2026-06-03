@@ -149,6 +149,8 @@ app.post('/api/add-creative', async (req, res) => {
   const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
   const safeCampaignName = campaign.replace(/\s+/g, '');
   const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
+  
+  // Prioritize which link to download (IG first, then TT, then FB)
   const videoLinkToDownload = ig || tt || fb;
 
   let sheetName = '';
@@ -174,10 +176,10 @@ app.post('/api/add-creative', async (req, res) => {
       requestBody: { values: [rowData] }
     });
 
-    // Step 2: Respond to client immediately — don't wait for AI
+    // Step 2: Respond to client immediately so the UI doesn't freeze
     res.json({ success: true, creativeId, aiPending: !!videoLinkToDownload });
 
-    // Step 3: Run AI in background AFTER responding
+    // Step 3: Run Video Download and AI in the background
     if (!videoLinkToDownload) return;
 
     (async () => {
@@ -185,16 +187,25 @@ app.post('/api/add-creative', async (req, res) => {
       let geminiFile = null;
       try {
         const updatedRange = appendResponse.data.updates.updatedRange;
-        // Parse the row number from the range e.g. 'Brand Say Contents'!A5:P5
         const rowMatch = updatedRange.match(/:.*?(\d+)$/);
-        if (!rowMatch) { console.error('Could not parse row number from range:', updatedRange); return; }
+        if (!rowMatch) return;
         const rowNum = parseInt(rowMatch[1]);
 
-        console.log(`Background AI starting for ${creativeId}, row ${rowNum}`);
+        console.log(`[AI Worker] Starting for ${creativeId}. Attempting to download: ${videoLinkToDownload}`);
+        
+        // Disguise the downloader as a standard Chrome browser to bypass bot-blocks
         videoPath = path.join(__dirname, `temp_video_${Date.now()}.mp4`);
-        await youtubedl(videoLinkToDownload, { output: videoPath, format: 'mp4' });
+        await youtubedl(videoLinkToDownload, { 
+            output: videoPath, 
+            format: 'mp4',
+            noWarnings: true,
+            addHeader: [
+                'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+                'accept-language:en-US,en;q=0.9'
+            ]
+        });
 
-        console.log(`Uploading to Gemini...`);
+        console.log(`[AI Worker] Download successful! Uploading to Gemini...`);
         geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
 
         let fileState = await ai.files.get({ name: geminiFile.name });
@@ -203,11 +214,10 @@ app.post('/api/add-creative', async (req, res) => {
           fileState = await ai.files.get({ name: geminiFile.name });
         }
 
-        if (fileState.state === 'FAILED') {
-          console.error('Gemini file processing failed');
-          return;
-        }
+        if (fileState.state === 'FAILED') throw new Error('Gemini video processing failed.');
 
+        console.log(`[AI Worker] Video processed. Running analysis...`);
+        
         const prompt = `Watch this video carefully. Extract the following:
 1. "hook": A 1-2 sentence description of the opening hook.
 2. "seg1": (0–25%) Describe the setting, who appears, what action or message is shown.
@@ -216,7 +226,7 @@ app.post('/api/add-creative', async (req, res) => {
 5. "seg4": (75–100%) Describe the closing and call to action.
 Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.`;
 
-const result = await ai.models.generateContent({
+        const result = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
           contents: [{ role: 'user', parts: [
             { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
@@ -224,17 +234,19 @@ const result = await ai.models.generateContent({
           ]}],
           config: { responseMimeType: "application/json", maxOutputTokens: 2000 }
         });
-        const analysisData = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+        
+        // Strip out any markdown formatting the AI might add
+        const jsonText = result.text.replace(/```json/gi, '').replace(/```/g, '').trim();
+        const analysisData = JSON.parse(jsonText);
+        
         const hook = analysisData.hook || "";
         const seg1 = analysisData.seg1 || "";
         const seg2 = analysisData.seg2 || "";
         const seg3 = analysisData.seg3 || "";
         const seg4 = analysisData.seg4 || "";
-        console.log(`AI done for ${creativeId}. Updating sheet row ${rowNum}...`);
 
-        // Columns differ by sheet type
-        // Brand Say:   G=hook, H=seg1, I=seg2, J=seg3, K=seg4
-        // Others Say:  G=hook, H=seg1, I=seg2, J=seg3, K=seg4
+        console.log(`[AI Worker] Analysis complete! Pushing to Google Sheets...`);
+
         await sheets.spreadsheets.values.batchUpdate({
           spreadsheetId: process.env.SHEET_ID,
           requestBody: {
@@ -248,11 +260,13 @@ const result = await ai.models.generateContent({
             ]
           }
         });
-        console.log(`Sheet updated successfully for ${creativeId}`);
+        
+        console.log(`[AI Worker] ✅ Sheet updated successfully for ${creativeId}`);
 
       } catch (bgErr) {
-        console.error('Background AI pipeline error:', bgErr);
+        console.error(`[AI Worker ERROR] Failed pipeline for ${creativeId}:`, bgErr.message);
       } finally {
+        // Always clean up the server to prevent running out of hard drive space
         if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
         if (geminiFile) {
           try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {}
@@ -265,7 +279,6 @@ const result = await ai.models.generateContent({
     if (!res.headersSent) res.status(500).json({ error: 'Failed to write to sheet.' });
   }
 });
-
 
 app.get('/api/dashboard-data', async (req, res) => {
   try {
