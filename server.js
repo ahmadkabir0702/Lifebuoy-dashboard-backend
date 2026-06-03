@@ -127,19 +127,49 @@ app.post('/api/add-creative', async (req, res) => {
   const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
   const safeCampaignName = campaign.replace(/\s+/g, '');
   const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
-
   const videoLinkToDownload = ig || tt || fb;
 
-  let hook = "", seg1 = "", seg2 = "", seg3 = "", seg4 = "";
-  let videoPath = null;
-  let geminiFile = null;
+  let sheetName = '';
+  let rowData = [];
+
+  if (type === 'Brand Say') {
+    sheetName = 'Brand Say Contents';
+    rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', null, ig, fb, tt];
+  } else if (type === 'Others Say') {
+    sheetName = 'Others Say Contents';
+    rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', '', '', '', '', '', null, ig, fb, tt];
+  } else {
+    return res.status(400).json({ error: 'Invalid Type selected.' });
+  }
 
   try {
-    if (videoLinkToDownload) {
-      console.log(`Downloading video from: ${videoLinkToDownload}`);
-      videoPath = path.join(__dirname, `temp_video_${Date.now()}.mp4`);
+    // Step 1: Write row immediately with empty AI fields
+    const appendResponse = await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.SHEET_ID,
+      range: `${sheetName}!A:P`,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: [rowData] }
+    });
 
+    // Step 2: Respond to client immediately — don't wait for AI
+    res.json({ success: true, creativeId, aiPending: !!videoLinkToDownload });
+
+    // Step 3: Run AI in background AFTER responding
+    if (!videoLinkToDownload) return;
+
+    (async () => {
+      let videoPath = null;
+      let geminiFile = null;
       try {
+        const updatedRange = appendResponse.data.updates.updatedRange;
+        // Parse the row number from the range e.g. 'Brand Say Contents'!A5:P5
+        const rowMatch = updatedRange.match(/:.*?(\d+)$/);
+        if (!rowMatch) { console.error('Could not parse row number from range:', updatedRange); return; }
+        const rowNum = parseInt(rowMatch[1]);
+
+        console.log(`Background AI starting for ${creativeId}, row ${rowNum}`);
+        videoPath = path.join(__dirname, `temp_video_${Date.now()}.mp4`);
         await youtubedl(videoLinkToDownload, { output: videoPath, format: 'mp4' });
 
         console.log(`Uploading to Gemini...`);
@@ -151,80 +181,70 @@ app.post('/api/add-creative', async (req, res) => {
           fileState = await ai.files.get({ name: geminiFile.name });
         }
 
-        if (fileState.state !== 'FAILED') {
-          console.log(`Generating AI Breakdown...`);
-          const prompt = `
-Watch this video carefully. Extract the following:
-
-1. "hook": A 1-2 sentence description of the opening hook — what visually happens in the first 2-3 seconds, the emotion or tension it creates, and why it stops the scroll.
-
-2. "seg1": (0–25%) Describe the setting, who appears, what action or message is shown, the tone, and any key text or audio cues.
-
-3. "seg2": (25–50%) Describe how the narrative or demonstration develops — what new information, emotion, or visual is introduced and how it builds on the hook.
-
-4. "seg3": (50–75%) Describe the core message or product moment — what is being shown or said, how it connects to the brand, and the viewer's emotional journey at this point.
-
-5. "seg4": (75–100%) Describe the closing — the call to action, final visual, any end card or branding, and the overall feeling the video leaves the viewer with.
-
-Keep each description to 2-3 sentences. Be specific about visuals, on-screen text, and tone. Do not use generic filler phrases.
-
-Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.
-`;
-
-          const result = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [{ role: 'user', parts: [{ fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } }, { text: prompt }] }],
-            config: { responseMimeType: "application/json", maxOutputTokens: 600 }
-          });
-
-          const analysisData = JSON.parse(result.text);
-          hook = analysisData.hook || "";
-          seg1 = analysisData.seg1 || "";
-          seg2 = analysisData.seg2 || "";
-          seg3 = analysisData.seg3 || "";
-          seg4 = analysisData.seg4 || "";
-          console.log("AI Analysis Successful.");
+        if (fileState.state === 'FAILED') {
+          console.error('Gemini file processing failed');
+          return;
         }
-      } catch (downloadOrAiError) {
-        console.error("AI/Download Pipeline Failed. Proceeding without AI descriptions.", downloadOrAiError);
+
+        const prompt = `Watch this video carefully. Extract the following:
+1. "hook": A 1-2 sentence description of the opening hook.
+2. "seg1": (0–25%) Describe the setting, who appears, what action or message is shown.
+3. "seg2": (25–50%) Describe how the narrative develops.
+4. "seg3": (50–75%) Describe the core message or product moment.
+5. "seg4": (75–100%) Describe the closing and call to action.
+Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.`;
+
+        const result = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [
+            { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+            { text: prompt }
+          ]}],
+          config: { responseMimeType: "application/json", maxOutputTokens: 600 }
+        });
+
+        const analysisData = JSON.parse(result.text);
+        const hook = analysisData.hook || "";
+        const seg1 = analysisData.seg1 || "";
+        const seg2 = analysisData.seg2 || "";
+        const seg3 = analysisData.seg3 || "";
+        const seg4 = analysisData.seg4 || "";
+        console.log(`AI done for ${creativeId}. Updating sheet row ${rowNum}...`);
+
+        // Columns differ by sheet type
+        // Brand Say:   G=hook, H=seg1, I=seg2, J=seg3, K=seg4
+        // Others Say:  G=hook, H=seg1, I=seg2, J=seg3, K=seg4
+        await sheets.spreadsheets.values.batchUpdate({
+          spreadsheetId: process.env.SHEET_ID,
+          requestBody: {
+            valueInputOption: "USER_ENTERED",
+            data: [
+              { range: `${sheetName}!G${rowNum}`, values: [[hook]] },
+              { range: `${sheetName}!H${rowNum}`, values: [[seg1]] },
+              { range: `${sheetName}!I${rowNum}`, values: [[seg2]] },
+              { range: `${sheetName}!J${rowNum}`, values: [[seg3]] },
+              { range: `${sheetName}!K${rowNum}`, values: [[seg4]] },
+            ]
+          }
+        });
+        console.log(`Sheet updated successfully for ${creativeId}`);
+
+      } catch (bgErr) {
+        console.error('Background AI pipeline error:', bgErr);
+      } finally {
+        if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        if (geminiFile) {
+          try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {}
+        }
       }
-    }
-
-    let sheetName = '';
-    let rowData = [];
-
-    if (type === 'Brand Say') {
-      sheetName = 'Brand Say Contents';
-      // A=date, B=creativeId, C=isRepurposed, D=originalId, E=campaign, F=type, G=hook, H=seg1, I=seg2, J=seg3, K=seg4, L=contentType, M=duration, N=ig, O=fb, P=tt
-rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', hook, seg1, seg2, seg3, seg4, 'Video', null, ig, fb, tt];    } else if (type === 'Others Say') {
-      sheetName = 'Others Say Contents';
-   // A=date, B=creativeId, C=campaign, D=type, E=creatorProfile, F=contentType, G=hook, H=seg1, I=seg2, J=seg3, K=seg4, L=duration, M=ig, N=fb, O=tt
-rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', hook, seg1, seg2, seg3, seg4, null, ig, fb, tt];    } else {
-      return res.status(400).json({ error: 'Invalid Type selected.' });
-    }
-
-    const response = await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SHEET_ID,
-      range: `${sheetName}!A:P`,
-      valueInputOption: "USER_ENTERED",
-      insertDataOption: "INSERT_ROWS",
-      requestBody: { values: [rowData] }
-    });
-
-    res.json({ success: true, data: response.data, creativeId, aiGenerated: !!(hook || seg1) });
+    })();
 
   } catch (error) {
-    console.error("Critical Add Creative Error:", error);
-    res.status(500).json({ error: 'Failed to complete workflow.' });
-  } finally {
-    if (videoPath && fs.existsSync(videoPath)) {
-      fs.unlinkSync(videoPath);
-    }
-    if (geminiFile) {
-      try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {}
-    }
+    console.error("Add Creative Error:", error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to write to sheet.' });
   }
 });
+
 
 app.get('/api/dashboard-data', async (req, res) => {
   try {
