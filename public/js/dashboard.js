@@ -424,17 +424,6 @@ function parseAccountOverview(rows) {
   });
 
 
-function parseFilters(rows) {
-  const campaigns = [];
-  rows.forEach(row => {
-    const val = String(row[4] || '').trim();
-    if (val && val !== 'Campaign FIlters' && val !== 'Campaign Filters') {
-      campaigns.push(val);
-    }
-  });
-  return campaigns;
-}
-
   const seen = new Set();
   return rows.slice(1).map(row => {
     const actMonth = String(row[h['ActMonth']] || '').trim();
@@ -450,6 +439,17 @@ function parseFilters(rows) {
     };
     return (r.actSpend > 0 || r.kpiSpend > 0) ? r : null;
   }).filter(Boolean);
+}
+
+function parseFilters(rows) {
+  const campaigns = [];
+  rows.forEach(row => {
+    const val = String(row[4] || '').trim();
+    if (val && val !== 'Campaign FIlters' && val !== 'Campaign Filters') {
+      campaigns.push(val);
+    }
+  });
+  return campaigns;
 }
 
 function enrichCreatives() {
