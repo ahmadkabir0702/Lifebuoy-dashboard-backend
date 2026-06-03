@@ -111,15 +111,23 @@ app.get('/logout', (req, res) => {
 });
 
 app.post('/api/test-gemini', async (req, res) => {
-  const { videoUrl, password } = req.body;
+const { videoBase64, password } = req.body;
   if (password !== process.env.TEST_SECRET) return res.status(401).json({ error: 'Wrong password' });
 
-  let videoPath = null;
-  let geminiFile = null;
   try {
-    videoPath = path.join(__dirname, `temp_test_${Date.now()}.mp4`);
-    await youtubedl(videoUrl, { output: videoPath, format: 'mp4' });
-    geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+    const prompt = `Watch this video carefully. Return ONLY a valid JSON object with exactly these 5 keys: "hook", "seg1", "seg2", "seg3", "seg4". Each value is a plain string of 2-3 sentences. No markdown, no code blocks.`;
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [
+        { inlineData: { mimeType: 'video/mp4', data: videoBase64 } },
+        { text: prompt }
+      ]}],
+      config: { responseMimeType: 'application/json', maxOutputTokens: 4000 }
+    });
+    const parsed = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+    res.json({ success: true, result: parsed });
+  } catch(err) {
+    res.json({ success: false, error: err.message });
     let fileState = await ai.files.get({ name: geminiFile.name });
     while (fileState.state === 'PROCESSING') {
       await new Promise(r => setTimeout(r, 3000));
