@@ -25,7 +25,7 @@ app.use(session({
 
 // Auth middleware — skips login/logout routes
 function requireAuth(req, res, next) {
-  if (req.path === '/login' || req.path === '/logout') return next();
+  if (req.path === '/login' || req.path === '/logout' || req.path === '/api/test-gemini') return next();
   if (req.session && req.session.user) return next();
   // API calls get 401, not redirect
   if (req.path.startsWith('/api/')) {
