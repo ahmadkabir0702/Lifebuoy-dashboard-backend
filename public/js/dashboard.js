@@ -1066,30 +1066,59 @@ async function submitCreative(e) {
   const btnCancel = document.getElementById('ac-cancel-btn');
   const progressContainer = document.getElementById('ac-progress-container');
   const progressText = document.getElementById('ac-progress-text');
+  const progressBar = document.getElementById('ac-progress-bar');
+
   btnConfirm.disabled = true;
   btnCancel.disabled = true;
   document.getElementById('addCreativeModal').style.pointerEvents = 'none';
   progressContainer.style.display = 'block';
-  progressText.innerText = "Downloading video & generating AI analysis... (This can take up to 60 seconds)";
+
+  const setProgress = (pct, msg, color) => {
+    progressBar.style.width = pct + '%';
+    progressBar.style.background = color || '#4f46e5';
+    progressText.innerText = msg;
+  };
+
+  setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
+
   try {
+    setTimeout(() => setProgress(30, '📥 Downloading video...', '#4f46e5'), 800);
+    setTimeout(() => setProgress(55, '🤖 AI is analysing content...', '#4f46e5'), 4000);
+    setTimeout(() => setProgress(75, '✍️ Generating hook & segment descriptions...', '#4f46e5'), 10000);
+    setTimeout(() => setProgress(90, '📊 Writing to Google Sheet...', '#4f46e5'), 20000);
+
     const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId })
     });
     const result = await res.json();
+
     if (result.success) {
-      progressText.innerText = "✅ Success! Sheet has been updated.";
-      setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 1500);
+      setProgress(100, '✅ Done! Creative added successfully.', '#16a34a');
+      progressBar.style.background = '#16a34a';
+      setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 1800);
     } else {
-      alert('Failed to add creative: ' + (result.error || 'Unknown error'));
-      resetSubmitUI();
+      setProgress(100, '❌ Failed: ' + (result.error || 'Unknown error'), '#dc2626');
+      progressBar.style.background = '#dc2626';
+      resetSubmitUI(3000);
     }
   } catch (err) {
     console.error(err);
-    alert('An error occurred while connecting to the server.');
-    resetSubmitUI();
+    setProgress(100, '❌ Network error — could not reach server.', '#dc2626');
+    progressBar.style.background = '#dc2626';
+    resetSubmitUI(3000);
   }
+}
+
+function resetSubmitUI(delay = 0) {
+  setTimeout(() => {
+    document.getElementById('ac-confirm-btn').disabled = false;
+    document.getElementById('ac-cancel-btn').disabled = false;
+    document.getElementById('ac-progress-container').style.display = 'none';
+    document.getElementById('ac-progress-bar').style.width = '0%';
+    document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
+  }, delay);
 }
 
 function resetSubmitUI() {
