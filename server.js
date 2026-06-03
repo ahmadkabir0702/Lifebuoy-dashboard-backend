@@ -236,8 +236,8 @@ const result = await ai.models.generateContent({
       ]}],
       config: { responseMimeType: "application/json", maxOutputTokens: 2000 }
     });
-    const rawText = result.text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(rawText);
+const cleanText = result.text.replace(/```json|```/g, '').trim();
+        const analysisData = JSON.parse(cleanText);
     res.json({ success: true, result: parsed });
 
 const rawText = result.text.replace(/```json|```/g, '').trim();
