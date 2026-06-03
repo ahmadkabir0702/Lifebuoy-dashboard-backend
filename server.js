@@ -10,6 +10,7 @@ const session = require('express-session');
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'changeme-set-in-env',
