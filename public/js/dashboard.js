@@ -1079,33 +1079,35 @@ async function submitCreative(e) {
     progressText.innerText = msg;
   };
 
-  setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
+setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
 
   try {
-    setTimeout(() => setProgress(30, '📥 Downloading video...', '#4f46e5'), 800);
-    setTimeout(() => setProgress(55, '🤖 AI is analysing content...', '#4f46e5'), 4000);
-    setTimeout(() => setProgress(75, '✍️ Generating hook & segment descriptions...', '#4f46e5'), 10000);
-    setTimeout(() => setProgress(90, '📊 Writing to Google Sheet...', '#4f46e5'), 20000);
+    const t1 = setTimeout(() => setProgress(30, '📥 Downloading video...', '#4f46e5'), 800);
+    const t2 = setTimeout(() => setProgress(55, '🤖 AI is analysing content...', '#4f46e5'), 4000);
+    const t3 = setTimeout(() => setProgress(75, '✍️ Generating hook & segment descriptions...', '#4f46e5'), 15000);
+    const t4 = setTimeout(() => setProgress(90, '📊 Writing to Google Sheet...', '#4f46e5'), 35000);
 
     const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId })
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId }),
+      signal: AbortSignal.timeout(120000)
     });
-    const result = await res.json();
+    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
 
-    if (result.success) {
-      setProgress(100, '✅ Done! Creative added successfully.', '#16a34a');
+  if (result.success) {
+      const aiMsg = result.aiGenerated ? ' AI descriptions generated.' : ' (No AI — video may be unsupported.)';
+      setProgress(100, 'Done! Creative added.' + aiMsg, '#16a34a');
       progressBar.style.background = '#16a34a';
-      setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 1800);
+      setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 3000);
     } else {
-      setProgress(100, '❌ Failed: ' + (result.error || 'Unknown error'), '#dc2626');
+      setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#dc2626');
       progressBar.style.background = '#dc2626';
       resetSubmitUI(3000);
     }
   } catch (err) {
     console.error(err);
-    setProgress(100, '❌ Network error — could not reach server.', '#dc2626');
+    setProgress(100, 'Network error — could not reach server.', '#dc2626');
     progressBar.style.background = '#dc2626';
     resetSubmitUI(3000);
   }
@@ -1119,13 +1121,6 @@ function resetSubmitUI(delay = 0) {
     document.getElementById('ac-progress-bar').style.width = '0%';
     document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
   }, delay);
-}
-
-function resetSubmitUI() {
-  document.getElementById('ac-confirm-btn').disabled = false;
-  document.getElementById('ac-cancel-btn').disabled = false;
-  document.getElementById('ac-progress-container').style.display = 'none';
-  document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
 loadData();
