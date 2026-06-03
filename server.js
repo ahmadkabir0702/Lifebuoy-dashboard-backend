@@ -211,7 +211,7 @@ rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', hook, seg1, 
       requestBody: { values: [rowData] }
     });
 
-    res.json({ success: true, data: response.data, creativeId });
+    res.json({ success: true, data: response.data, creativeId, aiGenerated: !!(hook || seg1) });
 
   } catch (error) {
     console.error("Critical Add Creative Error:", error);
