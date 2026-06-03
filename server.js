@@ -228,7 +228,7 @@ Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No 
 
 app.get('/api/dashboard-data', async (req, res) => {
   try {
-    const sheetNames = [
+   const sheetNames = [
       'Post performance Meta [Paid]',
       'Post performance TT [Paid]',
       'Recommendation - Meta',
@@ -238,7 +238,8 @@ app.get('/api/dashboard-data', async (req, res) => {
       'Post performance IG [Oragnic]',
       'Post performance FB [Oragnic]',
       'Post performance TT [Oragnic]',
-      'Account Overview'
+      'Account Overview',
+      'Filters'
     ];
 
     const requests = sheetNames.map(sheet =>
