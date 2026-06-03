@@ -105,13 +105,43 @@ app.post('/login', (req, res) => {
   }
 });
 
+app.get('/logout', (req, res) => {
+  req.session.destroy();
+  res.redirect('/login');
+});
+
 app.post('/api/test-gemini', async (req, res) => {
   const { videoUrl, password } = req.body;
   if (password !== process.env.TEST_SECRET) return res.status(401).json({ error: 'Wrong password' });
 
-app.get('/logout', (req, res) => {
-  req.session.destroy();
-  res.redirect('/login');
+  let videoPath = null;
+  let geminiFile = null;
+  try {
+    videoPath = path.join(__dirname, `temp_test_${Date.now()}.mp4`);
+    await youtubedl(videoUrl, { output: videoPath, format: 'mp4' });
+    geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+    let fileState = await ai.files.get({ name: geminiFile.name });
+    while (fileState.state === 'PROCESSING') {
+      await new Promise(r => setTimeout(r, 3000));
+      fileState = await ai.files.get({ name: geminiFile.name });
+    }
+    if (fileState.state === 'FAILED') return res.json({ success: false, error: 'Gemini processing failed' });
+    const prompt = `Watch this video carefully. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". Each value is 2-3 sentences. No markdown, no extra text.`;
+    const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [
+        { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+        { text: prompt }
+      ]}],
+      config: { responseMimeType: "application/json", maxOutputTokens: 600 }
+    });
+    res.json({ success: true, result: JSON.parse(result.text) });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  } finally {
+    if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+    if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {} }
+  }
 });
 
 // Serve static files — only after auth middleware
