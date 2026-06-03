@@ -111,9 +111,8 @@ app.get('/logout', (req, res) => {
 });
 
 app.post('/api/test-gemini', async (req, res) => {
-const { videoBase64, password } = req.body;
+  const { videoBase64, password } = req.body;
   if (password !== process.env.TEST_SECRET) return res.status(401).json({ error: 'Wrong password' });
-
   try {
     const prompt = `Watch this video carefully. Return ONLY a valid JSON object with exactly these 5 keys: "hook", "seg1", "seg2", "seg3", "seg4". Each value is a plain string of 2-3 sentences. No markdown, no code blocks.`;
     const result = await ai.models.generateContent({
@@ -128,27 +127,6 @@ const { videoBase64, password } = req.body;
     res.json({ success: true, result: parsed });
   } catch(err) {
     res.json({ success: false, error: err.message });
-    let fileState = await ai.files.get({ name: geminiFile.name });
-    while (fileState.state === 'PROCESSING') {
-      await new Promise(r => setTimeout(r, 3000));
-      fileState = await ai.files.get({ name: geminiFile.name });
-    }
-    if (fileState.state === 'FAILED') return res.json({ success: false, error: 'Gemini processing failed' });
-    const prompt = `Watch this video carefully. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". Each value is 2-3 sentences. No markdown, no extra text.`;
-    const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [
-        { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
-        { text: prompt }
-      ]}],
-      config: { responseMimeType: "application/json", maxOutputTokens: 600 }
-    });
-    res.json({ success: true, result: JSON.parse(result.text) });
-  } catch (err) {
-    res.json({ success: false, error: err.message });
-  } finally {
-    if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-    if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {} }
   }
 });
 
