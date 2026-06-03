@@ -352,7 +352,7 @@ function renderSection1(accOverview, allData, allContent) {
     card('Budget Spend', totalSpend, kpiSpend, spendPct, kpi.fmtMoney, budgetColor) +
     card('Reach',        totalReach, kpiReach, reachPct, kpi.fmtNum,   '#7c3aed') +
     card('Impressions',  totalImpr,  kpiImpr,  imprPct,  kpi.fmtNum,   '#0891b2') +
-    card('Frequency',    parseFloat(frequency)||0, null, null, v=>(v||0).toFixed(2)+'x', '#f59e0b') +
+    card('Frequency', parseFloat(frequency)||0, kpi.safeNum(actRow.kpiFrequency)||null, kpi.safeNum(actRow.kpiFrequency) ? Math.min(100, (parseFloat(frequency)||0) / kpi.safeNum(actRow.kpiFrequency) * 100) : null, v=>(v||0).toFixed(2)+'x', '#f59e0b') +
     `<div class="ks" style="--kpi-accent:#16a34a">
       <div class="ks-label">Active Assets</div>
       <div class="ks-val" style="color:#16a34a">${allData.filter(d=>d.adStatus==='ACTIVE').length}</div>
