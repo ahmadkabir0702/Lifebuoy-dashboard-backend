@@ -228,17 +228,20 @@ app.post('/api/add-creative', async (req, res) => {
 5. "seg4": (75–100%) Describe the closing and call to action.
 Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.`;
 
-        const result = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [{ role: 'user', parts: [
-            { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
-            { text: prompt }
-          ]}],
-          config: { responseMimeType: "application/json", maxOutputTokens: 600 }
-        });
+const result = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [
+        { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+        { text: prompt }
+      ]}],
+      config: { responseMimeType: "application/json", maxOutputTokens: 2000 }
+    });
+    const rawText = result.text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(rawText);
+    res.json({ success: true, result: parsed });
 
-        const analysisData = JSON.parse(result.text);
-        const hook = analysisData.hook || "";
+const rawText = result.text.replace(/```json|```/g, '').trim();
+        const analysisData = JSON.parse(rawText);
         const seg1 = analysisData.seg1 || "";
         const seg2 = analysisData.seg2 || "";
         const seg3 = analysisData.seg3 || "";
