@@ -75,7 +75,7 @@ Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No 
                 const result = await ai.models.generateContent({
                     model: 'gemini-2.5-flash',
                     contents: [{ role: 'user', parts: [{ fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } }, { text: prompt }] }],
-                    config: { responseMimeType: "application/json" }
+                    config: { responseMimeType: "application/json", maxOutputTokens: 800 }
                 });
 
                 const analysisData = JSON.parse(result.text);
