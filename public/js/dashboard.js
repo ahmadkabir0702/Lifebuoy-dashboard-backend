@@ -422,7 +422,7 @@ function parseAccountOverview(rows) {
   });
 
   const seen = new Set();
-  return rows.slice(2).map(row => {
+  return rows.slice(1).map(row => {
     const actMonth = String(row[h['ActMonth']] || '').trim();
     if (!actMonth || seen.has(actMonth)) return null;
     seen.add(actMonth);
