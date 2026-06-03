@@ -15,6 +15,7 @@ let IG_ORG = {}, FB_ORG = {}, TT_ORG = {};
 let META_RECS = {}, TT_RECS = {};
 let ALL_CONTENT = [], PAID_IDS = new Set();
 let ACCOUNT_OVERVIEW = [];
+let CAMPAIGNS = [];
 let currentPlatform = 'both', currentSort = 'hook', sortAscending = false, selectedId = null;
 let currentPage = 'creatives';
 let chartsInit = {};
@@ -24,7 +25,7 @@ async function loadData() {
   try {
     const response = await fetch('/api/dashboard-data');
     if (!response.ok) throw new Error("Backend connection failed.");
-    const [mR, tR, mRecR, tRecR, bsR, osR, igR, fbR, ttOrgR, aoR] = await response.json();
+    const [mR, tR, mRecR, tRecR, bsR, osR, igR, fbR, ttOrgR, aoR, filtersR] = await response.json();
 
     META_RECS = parseRecs(mRecR || [], 'Recommendation - Meta');
     TT_RECS   = parseRecs(tRecR || [], 'Recommendation - Tiktok');
@@ -34,6 +35,7 @@ async function loadData() {
     FB_ORG = parseOrganic(fbR || [], 'fb');
     TT_ORG = parseOrganic(ttOrgR || [], 'tt');
     ACCOUNT_OVERVIEW = parseAccountOverview(aoR || []);
+    CAMPAIGNS = parseFilters(filtersR || []);
     processContent(bsR || [], osR || []);
     enrichCreatives();
     ALL = mergeAllCreatives(META, TT);
@@ -420,6 +422,18 @@ function parseAccountOverview(rows) {
     if (name === 'kpiimpressions') h['KpiImpressions'] = i;
     if (name === 'kpifrequency') h['KpiFrequency'] = i;
   });
+
+
+function parseFilters(rows) {
+  const campaigns = [];
+  rows.forEach(row => {
+    const val = String(row[4] || '').trim();
+    if (val && val !== 'Campaign FIlters' && val !== 'Campaign Filters') {
+      campaigns.push(val);
+    }
+  });
+  return campaigns;
+}
 
   const seen = new Set();
   return rows.slice(1).map(row => {
@@ -991,7 +1005,9 @@ async function confirmAction() {
 function openAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'flex';
   const campaignSelect = document.getElementById('ac-campaign');
-  const campaigns = [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))];
+  const campaigns = CAMPAIGNS.length > 0
+    ? CAMPAIGNS
+    : [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))];
   campaignSelect.innerHTML = '<option value="" disabled selected>Select Campaign</option>';
   campaigns.forEach(c => { campaignSelect.innerHTML += `<option value="${c}">${c}</option>`; });
   const orgIdSelect = document.getElementById('ac-original-id');
