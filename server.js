@@ -10,6 +10,90 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const session = require('express-session');
+const crypto  = require('crypto');
+
+// Sessions
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'changeme',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 8 * 60 * 60 * 1000 } // 8 hours
+}));
+
+// Auth middleware
+function requireAuth(req, res, next) {
+  if (req.session && req.session.user) return next();
+  res.redirect('/login');
+}
+
+// Login page
+app.get('/login', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f8f7f4; display: flex; align-items: center;
+      justify-content: center; height: 100vh; }
+    .box { background: #fff; border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 12px; padding: 32px; width: 320px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+    h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .sub { font-size: 12px; color: #6b6b6b; margin-bottom: 24px; }
+    label { font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .06em; color: #6b6b6b; display: block; margin-bottom: 5px; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 7px; font-size: 13px; font-family: inherit;
+      outline: none; margin-bottom: 14px; }
+    input:focus { border-color: #2563eb; }
+    button { width: 100%; padding: 11px; background: #2563eb; color: #fff;
+      border: none; border-radius: 7px; font-size: 13px; font-weight: 600;
+      cursor: pointer; font-family: inherit; }
+    button:hover { background: #1d4ed8; }
+    .err { background: #fee2e2; color: #b91c1c; border-radius: 6px;
+      padding: 9px 12px; font-size: 12px; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Dashboard Login</h2>
+    <p class="sub">Sunsilk 2026 · Unilever</p>
+    ${req.query.error ? '<div class="err">Incorrect username or password.</div>' : ''}
+    <form method="POST" action="/login">
+      <label>Username</label>
+      <input type="text" name="username" autocomplete="username" required autofocus>
+      <label>Password</label>
+      <input type="password" name="password" autocomplete="current-password" required>
+      <button type="submit">Sign In</button>
+    </form>
+  </div>
+</body>
+</html>`);
+});
+
+// Login POST
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  const envKey = `USER_${username}`;
+  const storedPassword = process.env[envKey];
+  if (storedPassword && storedPassword === password) {
+    req.session.user = username;
+    res.redirect('/');
+  } else {
+    res.redirect('/login?error=1');
+  }
+});
+
+// Logout
+app.get('/logout', (req, res) => {
+  req.session.destroy();
+  res.redirect('/login');
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const auth = new google.auth.JWT(
@@ -182,9 +266,15 @@ app.post('/api/update-action', async (req, res) => {
   }
 });
 
-app.get('*', (req, res) => {
+// To this:
+app.get('*', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
+
+// And protect all API routes too — add requireAuth to each:
+app.get('/api/dashboard-data', requireAuth, async (req, res) => { ...
+app.post('/api/update-action', requireAuth, async (req, res) => { ...
+app.post('/api/add-creative', requireAuth, async (req, res) => { ...
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
