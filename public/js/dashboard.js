@@ -443,8 +443,11 @@ function parseAccountOverview(rows) {
 
 function parseFilters(rows) {
   const campaigns = [];
-  if (!rows || rows.length === 0) return campaigns;
-  // Find which column has 'Campaign Filters' header, then read values below it
+  if (!rows || rows.length === 0) {
+    console.log('parseFilters: no rows received');
+    return campaigns;
+  }
+  console.log('parseFilters: rows received:', rows.length, rows);
   let campColIndex = -1;
   let campHeaderRow = -1;
   rows.forEach((row, ri) => {
@@ -455,12 +458,13 @@ function parseFilters(rows) {
       }
     });
   });
+  console.log('parseFilters: header found at row', campHeaderRow, 'col', campColIndex);
   if (campColIndex === -1) return campaigns;
-  // Read all rows after the header row in that column
   rows.slice(campHeaderRow + 1).forEach(row => {
     const val = String(row[campColIndex] || '').trim();
     if (val && val !== 'undefined') campaigns.push(val);
   });
+  console.log('parseFilters: campaigns found:', campaigns);
   return campaigns;
 }
 
@@ -1019,14 +1023,16 @@ function openAddCreativeModal() {
   const campaignSelect = document.getElementById('ac-campaign');
   const campaigns = CAMPAIGNS.length > 0
     ? CAMPAIGNS
-    : [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))];
-  campaignSelect.innerHTML = '<option value="" disabled selected>Select Campaign</option>';
-  campaigns.forEach(c => { campaignSelect.innerHTML += `<option value="${c}">${c}</option>`; });
-  const orgIdSelect = document.getElementById('ac-original-id');
-  const creativeIds = [...new Set(ALL_CONTENT.map(c => c.id).filter(id => id))];
-  orgIdSelect.innerHTML = '<option value="" disabled selected>Select Original Creative ID</option>';
-  creativeIds.forEach(id => { orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`; });
-}
+    : ALL_CONTENT.length > 0
+      ? [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))]
+      : [];
+
+  // Emergency fallback: if still empty, show a text input instead
+  if (campaigns.length === 0) {
+    const campaignSelect = document.getElementById('ac-campaign');
+    campaignSelect.outerHTML = '<input type="text" id="ac-campaign" class="modal-input" style="margin-bottom:10px;" placeholder="Type campaign name..." required>';
+    return;
+  }
 
 function closeAddCreativeModal() {
   document.getElementById('addCreativeModal').style.display = 'none';
@@ -1105,9 +1111,10 @@ setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
       body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId }),
       signal: AbortSignal.timeout(120000)
     });
-    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+   clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
 
-if (result.success) {
+    const result = await res.json();
+    if (result.success) {
       const aiMsg = result.aiPending ? ' AI descriptions are being generated in the background — check the sheet in ~1 minute.' : '';
       setProgress(100, '✅ Row added to sheet!' + aiMsg, '#16a34a');
       progressBar.style.background = '#16a34a';
