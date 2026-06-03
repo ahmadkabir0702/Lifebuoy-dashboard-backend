@@ -11,6 +11,7 @@
     "googleapis": "^128.0.0",
     "@google/genai": "latest",
     "youtube-dl-exec": "latest",
-    "dotenv": "latest"
+    "dotenv": "latest",
+    "express-session": "^1.17.3"
   }
 }
