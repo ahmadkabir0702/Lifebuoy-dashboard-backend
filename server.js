@@ -117,7 +117,17 @@ app.post('/api/test-gemini', async (req, res) => {
   const { videoBase64, password } = req.body;
   if (password !== process.env.TEST_SECRET) return res.status(401).json({ error: 'Wrong password' });
   try {
-    const prompt = `Watch this video carefully. Return ONLY a valid JSON object with exactly these 5 keys: "hook", "seg1", "seg2", "seg3", "seg4". Each value is a plain string of 2-3 sentences. No markdown, no code blocks.`;
+  console.log(`[AI Worker] Generating detailed descriptions...`);
+    
+    const prompt = `Watch this video carefully and provide a highly descriptive visual and narrative analysis. Extract the following 5 segments:
+
+1. "hook": Write exactly 2 detailed sentences describing the opening hook (first 3 seconds). Note the visual impact, audio, or text used to grab attention.
+2. "seg1": (0–25%) Write exactly 2-3 detailed sentences describing the setting, who appears, specific actions, and any text on screen.
+3. "seg2": (25–50%) Write exactly 2-3 detailed sentences describing how the narrative, demonstration, or emotional tone develops.
+4. "seg3": (50–75%) Write exactly 2-3 detailed sentences describing the core product moment, key features shown, or the climax of the message.
+5. "seg4": (75–100%) Write exactly 2-3 detailed sentences describing the closing scene, final branding moments, and the call to action.
+
+Make your descriptions vivid and specific (mention colors, emotions, or exact text if relevant). Return ONLY a valid JSON object with exactly these keys: "hook", "seg1", "seg2", "seg3", "seg4". Do not use markdown formatting or include any extra text outside the JSON.`;
     const result = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [
