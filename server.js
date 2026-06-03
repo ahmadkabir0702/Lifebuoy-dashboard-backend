@@ -216,10 +216,9 @@ Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No 
   }
 });
 
-app.get('/api/dashboard-data', async (req, res) => {
+app.get('/api/dashboard-data', requireAuth, async (req, res) => {
   try {
-    // Exact tab names matching your Excel file uploads
-const sheetNames = [
+    const sheetNames = [
       'Post performance Meta [Paid]',
       'Post performance TT [Paid]',
       'Recommendation - Meta',
@@ -229,7 +228,7 @@ const sheetNames = [
       'Post performance IG [Oragnic]',
       'Post performance FB [Oragnic]',
       'Post performance TT [Oragnic]',
-      'Account Overview' // <-- ADD THIS
+      'Account Overview'
     ];
 
     const requests = sheetNames.map(sheet => 
