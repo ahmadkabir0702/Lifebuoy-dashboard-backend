@@ -195,11 +195,11 @@ Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No 
 
     if (type === 'Brand Say') {
       sheetName = 'Brand Say Contents';
-      rowData = [date, creativeId, repurposed, originalId, campaign, null, hook, seg1, seg2, seg3, seg4, 'Video', null, ig, fb, tt];
-    } else if (type === 'Others Say') {
+      // A=date, B=creativeId, C=isRepurposed, D=originalId, E=campaign, F=type, G=hook, H=seg1, I=seg2, J=seg3, K=seg4, L=contentType, M=duration, N=ig, O=fb, P=tt
+rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', hook, seg1, seg2, seg3, seg4, 'Video', null, ig, fb, tt];    } else if (type === 'Others Say') {
       sheetName = 'Others Say Contents';
-      rowData = [date, creativeId, campaign, null, null, 'Video', hook, seg1, seg2, seg3, seg4, null, ig, fb, tt];
-    } else {
+   // A=date, B=creativeId, C=campaign, D=type, E=creatorProfile, F=contentType, G=hook, H=seg1, I=seg2, J=seg3, K=seg4, L=duration, M=ig, N=fb, O=tt
+rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', hook, seg1, seg2, seg3, seg4, null, ig, fb, tt];    } else {
       return res.status(400).json({ error: 'Invalid Type selected.' });
     }
 
