@@ -157,9 +157,12 @@ const sheets = google.sheets({ version: 'v4', auth });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.post('/api/add-creative', async (req, res) => {
-  const { date, campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
-  const safeCampaignName = campaign.replace(/\s+/g, '');
-  const creativeId = `LifebuoyBW_${safeCampaignName}_New_${Date.now()}`;
+  const { date, campaign, type, ig, fb, tt, repurposed, originalId, brand } = req.body;
+  const safeBrand = (brand || 'Brand').replace(/\s+/g, '');
+  const safeCampaign = campaign.replace(/\s+/g, '');
+  const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
+  const repCode = (repurposed === 'Yes') ? 'Repurposed' : 'Original';
+  const creativeId = `${safeBrand}_${safeCampaign}_${typeCode}_${repCode}_${Date.now()}`;
   const videoLinkToDownload = ig || tt || fb;
 
   let sheetName = '';
