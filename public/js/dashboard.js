@@ -316,6 +316,9 @@ function processContent(bsRows, osRows) {
     const headers = bsRows[0].map(h => String(h).trim().toLowerCase());
     const h = {};
     commonHeaders(headers, h);
+      console.log('BS headers:', headers);
+    console.log('BS h map:', h);
+    console.log('BS row 1:', bsRows[1]);
     bsRows.slice(1).forEach(row => {
       const id = String(row[h['Creative ID']] || '').trim();
       if (!id || !id.startsWith('Lifebuoy')) return;
