@@ -145,7 +145,7 @@ function parsePaid(rows, platform) {
 
   const cqrOrder = {Good:0, Average:1, Poor:2, Invalid:3};
   const avg = arr => arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0;
-  const isActive = s => { const u = String(s).toUpperCase(); return u==='ACTIVE'||u==='ENABLE'; };
+  const isActive = s => { const u = String(s).trim().toUpperCase(); return u==='ACTIVE'||u==='ENABLE'; };
   const map = {};
 
   rows.slice(1).forEach(row => {
@@ -771,7 +771,8 @@ function renderCards(data) {
           <span class="card-type ${d.type==='Brand Say'?'bs-tag':'os-tag'}">${d.type==='Brand Say'?'BS':'OS'}</span>${repTag}
         </div>
       </div>
-      <div class="card-name">${d.short || d.id}</div>
+      <div class="card-name">${d.id}</div>
+      <div style="font-size:9px;color:var(--c-muted);margin-top:-6px;margin-bottom:4px;">${d.short !== d.id ? d.short : ''}</div>
       <div class="card-campaign">${d.campaign} · ${d.month}</div>
       <div class="card-tags">${durTag}${ctTag}${valTag}</div>
       <div class="mini-bars">
@@ -1147,13 +1148,13 @@ async function submitCreative(e) {
     progressText.innerText = msg;
   };
 
-setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
+setProgress(10, 'Submitting creative details...', '#4f46e5');
 
   try {
-    const t1 = setTimeout(() => setProgress(30, '📥 Downloading video...', '#4f46e5'), 800);
-    const t2 = setTimeout(() => setProgress(55, '🤖 AI is analysing content...', '#4f46e5'), 4000);
-    const t3 = setTimeout(() => setProgress(75, '✍️ Generating hook & segment descriptions...', '#4f46e5'), 15000);
-    const t4 = setTimeout(() => setProgress(90, '📊 Writing to Google Sheet...', '#4f46e5'), 35000);
+    const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#4f46e5'), 800);
+    const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#4f46e5'), 4000);
+    const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#4f46e5'), 15000);
+    const t4 = setTimeout(() => setProgress(90, 'Writing to Google Sheet...', '#4f46e5'), 35000);
 
 const res = await fetch('/api/add-creative', {
       method: 'POST',
@@ -1166,7 +1167,7 @@ const res = await fetch('/api/add-creative', {
     const result = await res.json();
     if (result.success) {
       const aiMsg = result.aiPending ? ' AI descriptions are being generated in the background — check the sheet in ~1 minute.' : '';
-      setProgress(100, '✅ Row added to sheet!' + aiMsg, '#16a34a');
+      setProgress(100, 'Row added to sheet!' + aiMsg, '#16a34a');
       progressBar.style.background = '#16a34a';
       setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 3000);
     } else {
