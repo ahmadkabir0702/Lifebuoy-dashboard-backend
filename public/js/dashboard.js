@@ -295,7 +295,7 @@ function processContent(bsRows, osRows) {
 
   const commonHeaders = (headers, h) => {
     headers.forEach((name, i) => {
-      if (name.includes('creative id')) h['Creative ID'] = i;
+      if (name === 'creative id') h['Creative ID'] = i;
       if (name.includes('campaign')) h['Campaign'] = i;
       if (name === 'ig') h['IG'] = i;
       if (name === 'fb') h['FB'] = i;
