@@ -16,6 +16,7 @@ let META_RECS = {}, TT_RECS = {};
 let ALL_CONTENT = [], PAID_IDS = new Set();
 let ACCOUNT_OVERVIEW = [];
 let CAMPAIGNS = [];
+let BRAND_NAME = '';
 let currentPlatform = 'both', currentSort = 'hook', sortAscending = false, selectedId = null;
 let currentPage = 'creatives';
 let chartsInit = {};
@@ -35,7 +36,9 @@ async function loadData() {
     FB_ORG = parseOrganic(fbR || [], 'fb');
     TT_ORG = parseOrganic(ttOrgR || [], 'tt');
     ACCOUNT_OVERVIEW = parseAccountOverview(aoR || []);
-    CAMPAIGNS = parseFilters(filtersR || []);
+    const filtersData = parseFilters(filtersR || []);
+    CAMPAIGNS = filtersData.campaigns;
+    BRAND_NAME = filtersData.brand;
     processContent(bsR || [], osR || []);
     enrichCreatives();
     ALL = mergeAllCreatives(META, TT);
@@ -324,8 +327,11 @@ function processContent(bsRows, osRows) {
       if (!id || !id.startsWith('Lifebuoy')) return;
       const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
       const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
-      const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
-      const shortName = m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : id;
+     const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
+      const parts = id.split('_');
+      const shortName = m
+        ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}`
+        : (parts.length >= 4 ? `${parts[1]} · ${parts[2]} · ${parts[3]}` : id);
       ALL_CONTENT.push({
         id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
         type: 'Brand Say', month: getMonthFromId(id), isPaid: PAID_IDS.has(id),
@@ -396,7 +402,10 @@ function processContent(bsRows, osRows) {
       } : null;
 
       const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
-      const shortName = m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : id;
+      const parts = id.split('_');
+      const shortName = m
+        ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}`
+        : (parts.length >= 4 ? `${parts[1]} · ${parts[2]} · ${parts[3]}` : id);
 
       ALL_CONTENT.push({
         id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
@@ -450,14 +459,18 @@ function parseAccountOverview(rows) {
 }
 
 function parseFilters(rows) {
-  const campaigns = [];
-  if (!rows || rows.length === 0) {
-    console.log('parseFilters: no rows received');
-    return campaigns;
-  }
-  console.log('parseFilters: rows received:', rows.length, rows);
-  let campColIndex = -1;
-  let campHeaderRow = -1;
+  const result = { brand: '', campaigns: [] };
+  if (!rows || rows.length === 0) return result;
+
+  // Extract brand name — row where col B = "brand", value in col C
+  rows.forEach(row => {
+    if (String(row[1] || '').trim().toLowerCase() === 'brand') {
+      result.brand = String(row[2] || '').trim();
+    }
+  });
+
+  // Extract campaigns — find "Campaign FIlters" header in col E
+  let campColIndex = -1, campHeaderRow = -1;
   rows.forEach((row, ri) => {
     row.forEach((cell, ci) => {
       if (String(cell).toLowerCase().includes('campaign') && String(cell).toLowerCase().includes('filter')) {
@@ -466,14 +479,13 @@ function parseFilters(rows) {
       }
     });
   });
-  console.log('parseFilters: header found at row', campHeaderRow, 'col', campColIndex);
-  if (campColIndex === -1) return campaigns;
-  rows.slice(campHeaderRow + 1).forEach(row => {
-    const val = String(row[campColIndex] || '').trim();
-    if (val && val !== 'undefined') campaigns.push(val);
-  });
-  console.log('parseFilters: campaigns found:', campaigns);
-  return campaigns;
+  if (campColIndex !== -1) {
+    rows.slice(campHeaderRow + 1).forEach(row => {
+      const val = String(row[campColIndex] || '').trim();
+      if (val && val !== 'undefined') result.campaigns.push(val);
+    });
+  }
+  return result;
 }
 
 function enrichCreatives() {
@@ -527,7 +539,15 @@ function enrichCreatives() {
 
 function getMonthFromId(id) {
   const match = id.match(/_(\d{8})$/);
-  if (!match) return 'Unknown';
+  if (!match) {
+    const tsMatch = id.match(/_(\d{13})$/);
+    if (tsMatch) {
+      const d = new Date(parseInt(tsMatch[1]));
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return `${months[d.getMonth()]} ${d.getFullYear()}`;
+    }
+    return 'Unknown';
+  }
   const d = match[1];
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return `${months[parseInt(d.substring(4,6))-1]} ${d.substring(0,4)}`;
@@ -1118,10 +1138,10 @@ setProgress(10, '⏳ Submitting creative details...', '#4f46e5');
     const t3 = setTimeout(() => setProgress(75, '✍️ Generating hook & segment descriptions...', '#4f46e5'), 15000);
     const t4 = setTimeout(() => setProgress(90, '📊 Writing to Google Sheet...', '#4f46e5'), 35000);
 
-    const res = await fetch('/api/add-creative', {
+const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId }),
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME }),
       signal: AbortSignal.timeout(120000)
     });
    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
