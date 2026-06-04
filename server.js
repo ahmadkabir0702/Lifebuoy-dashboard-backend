@@ -72,7 +72,7 @@ app.get('/login', (req, res) => {
 </head>
 <body>
   <div class="box">
-    <h2>Mindshare x Unilever</h2>
+    <h2>Unilever Content Analysis Hub</h2>
     <p class="sub">Creative Hub · 2026</p>
     ${req.query.error ? '<div class="err">Incorrect username or password.</div>' : ''}
     <form method="POST" action="/login">
