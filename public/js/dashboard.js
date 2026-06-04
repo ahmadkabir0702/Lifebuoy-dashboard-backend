@@ -54,11 +54,12 @@ async function loadData() {
 
 function mergeAllCreatives(metaData, ttData) {
   const mergedMap = {};
-  ALL_CONTENT.forEach(c => {
+ ALL_CONTENT.forEach(c => {
     mergedMap[c.id] = {
       ...c, platforms: [], _meta: null, _tt: null,
       spend: 0, reach: 0, impressions: 0, hookRate: 0, holdRate: 0, watchTime: 0, vtr: 0, vp: 1,
-      ret: [100, 0, 0, 0, 0, 0], adStatus: 'STOPPED', cqr: 'Invalid'
+      ret: [100, 0, 0, 0, 0, 0], adStatus: 'NOT_BOOSTED', cqr: 'Invalid',
+      platform: 'both'
     };
   });
 
@@ -146,7 +147,8 @@ function parsePaid(rows, platform) {
   const map = {};
 
   rows.slice(1).forEach(row => {
-    const creativeId = String(row[h['Creative ID']] || '').trim();
+    // Creative ID is col F (index 5) — array formula in Google Sheets, resolves to Lifebuoy ID
+    const creativeId = String(row[5] || row[h['Creative ID']] || '').trim();
     if (!creativeId || creativeId === 'Not Found' || !creativeId.startsWith('Lifebuoy')) return;
 
     const spend = parseNum(row[h['Spend']]);
@@ -188,7 +190,7 @@ function parsePaid(rows, platform) {
   });
 
   const r1 = v => Math.round(v*10)/10;
-  return Object.values(map).filter(d=>d.spend>0).map(d => {
+  return Object.values(map).map(d => {
     const vp = d.vp || 1;
     const m  = d.creativeId.match(/Video(\d+)_(BrandSay|OthersSay)/);
     return {
@@ -228,7 +230,10 @@ function parseOrganic(rows, platform) {
 
   const map = {};
   rows.slice(1).forEach(row => {
-    const id = String(row[h['Creative ID']] || '').trim();
+    const rawId = String(row[h['Creative ID']] || '').trim();
+    // Handle formula cells whose string includes the ID after a comma+quote
+    const idMatch = rawId.match(/LifebuoyBW[^"'\s]*/);
+    const id = idMatch ? idMatch[0] : rawId;
     if (!id || !id.startsWith('Lifebuoy')) return;
     const cqr = String(row[h['CQR']] || '');
     const criteriaRaw = h['24hr'] !== undefined ? String(row[h['24hr']] || '').trim().toLowerCase() : '';
@@ -707,6 +712,7 @@ function renderCards(data) {
     const hdPct  = Math.round((d.holdRate/maxHold)*100);
     const rchPct = Math.round((d.reach/maxReach)*100);
     const isAct  = d.adStatus === 'ACTIVE';
+    const isNotBoosted = d.adStatus === 'NOT_BOOSTED';
 
     const platHTML = d.platform === 'both'
       ? `<span style="color:var(--c-meta);font-weight:700;font-size:10px">META</span> <span style="color:var(--c-muted)">&amp;</span> <span style="color:var(--c-tt);font-weight:700;font-size:10px">TT</span>`
@@ -720,7 +726,7 @@ function renderCards(data) {
 
     return `<div class="card ${d.id===selectedId?'selected':''}" onclick="selectCard('${d.id}')">
       <div class="card-top">
-        <div class="card-plat"><div class="status-dot ${isAct?'status-active-dot':'status-stopped-dot'}"></div>${platHTML}</div>
+        <div class="card-plat"><div class="status-dot ${isAct?'status-active-dot':isNotBoosted?'':'status-stopped-dot'}"></div>${platHTML}</div>
         <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;justify-content:flex-end">
           <span class="card-type ${d.type==='Brand Say'?'bs-tag':'os-tag'}">${d.type==='Brand Say'?'BS':'OS'}</span>${repTag}
         </div>
@@ -733,7 +739,7 @@ function renderCards(data) {
         <div class="mini-bar-row"><div class="mini-bar-label">Hook</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hkPct}%;background:${hookColor(d.hookRate)}"></div></div><div class="mini-bar-val" style="color:${hookColor(d.hookRate)}">${(d.hookRate||0).toFixed(1)}%</div></div>
         <div class="mini-bar-row"><div class="mini-bar-label">Hold</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hdPct}%;background:#3b82f6"></div></div><div class="mini-bar-val">${hlValFormatted}</div></div>
       </div>
-      <div class="card-footer"><span class="cqr-badge ${cqrClass(d.cqr)}">${d.cqr}</span><div class="spend-info"><div class="spend-label">Spend</div><div class="spend-val">${fmt(d.spend)}</div></div></div>
+      <div class="card-footer"><span class="cqr-badge ${isNotBoosted?'inv-bg':cqrClass(d.cqr)}">${isNotBoosted?'Not Boosted':d.cqr}</span>
     </div>`;
   }).join('');
 }
