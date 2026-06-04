@@ -634,9 +634,23 @@ function toggleSortDir() {
 
 function getData() {
   let data = ALL;
-  if (currentPlatform === 'meta')   data = ALL.filter(d => d.platform === 'meta'   || d.platform === 'both').map(d => d.platform === 'both' ? d._meta : d);
-  if (currentPlatform === 'tiktok') data = ALL.filter(d => d.platform === 'tiktok' || d.platform === 'both').map(d => d.platform === 'both' ? d._tt   : d);
-
+  if (currentPlatform === 'meta') {
+    data = ALL.filter(d => d.platform === 'meta' || d.platform === 'both').map(d => {
+      if (d.platform === 'both' && d._meta) {
+        return { ...d, reach: d._meta.reach, hookRate: d._meta.hookRate, holdRate: d._meta.holdRate, spend: d._meta.spend, impressions: d._meta.impressions, cqr: d._meta.cqr, hookQual: d._meta.hookQual, holdQual: d._meta.holdQual, vtr: d._meta.vtr, watchTime: d._meta.watchTime, adStatus: d._meta.adStatus, ret: d._meta.ret };
+      }
+      return d;
+    });
+  }
+  if (currentPlatform === 'tiktok') {
+    data = ALL.filter(d => d.platform === 'tiktok' || d.platform === 'both').map(d => {
+      if (d.platform === 'both' && d._tt) {
+        return { ...d, reach: d._tt.reach, hookRate: d._tt.hookRate, holdRate: d._tt.holdRate, spend: d._tt.spend, impressions: d._tt.impressions, cqr: d._tt.cqr, hookQual: d._tt.hookQual, holdQual: d._tt.holdQual, vtr: d._tt.vtr, watchTime: d._tt.watchTime, adStatus: d._tt.adStatus, ret: d._tt.ret };
+      }
+      return d;
+    });
+  }
+    
   const searchQ = (document.getElementById('search-filter')       || {}).value?.toLowerCase() || '';
   const tf      = (document.getElementById('type-filter')         || {}).value || 'all';
   const mf      = (document.getElementById('month-filter')        || {}).value || 'all';
