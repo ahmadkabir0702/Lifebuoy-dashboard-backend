@@ -95,14 +95,13 @@ function mergeAllCreatives(metaData, ttData) {
       const ttCqr = d.ttOrganic?.cqr;
       d.isValidated = ['Good', 'Average'].includes(igCqr) || ['Good', 'Average'].includes(ttCqr);
       d.bestOrgCqr = (igCqr === 'Good' || ttCqr === 'Good') ? 'Good' : (d.isValidated ? 'Average' : null);
-    } else {
-      d.isValidated = !!(d.igOrganic?.meets24hr || d.fbOrganic?.meets24hr || d.ttOrganic?.meets24hr);
+} else {
       const order = {Good:0, Average:1, Poor:2};
       let minCqr = 3;
       ['igOrganic', 'fbOrganic', 'ttOrganic'].forEach(p => {
         if (d[p] && order[d[p].cqr] !== undefined) minCqr = Math.min(minCqr, order[d[p].cqr]);
       });
-      if (!d.isValidated && minCqr <= 1) d.isValidated = true;
+      d.isValidated = minCqr <= 1;
       d.bestOrgCqr = minCqr === 0 ? 'Good' : (minCqr === 1 ? 'Average' : null);
     }
 
