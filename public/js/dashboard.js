@@ -152,7 +152,7 @@ function parsePaid(rows, platform) {
   rows.slice(1).forEach(row => {
     // Creative ID is col F (index 5) — array formula in Google Sheets, resolves to Lifebuoy ID
     const creativeId = String(row[5] || row[h['Creative ID']] || '').trim();
-    if (!creativeId || creativeId === 'Not Found' || !creativeId.startsWith('Lifebuoy')) return;
+    if (!creativeId || creativeId === 'Not Found' || creativeId.length < 5) return;
 
     const spend = parseNum(row[h['Spend']]);
     const reach = parseNum(row[h['Reach']]);
@@ -237,7 +237,7 @@ function parseOrganic(rows, platform) {
     // Handle formula cells whose string includes the ID after a comma+quote
     const idMatch = rawId.match(/LifebuoyBW[^"'\s]*/);
     const id = idMatch ? idMatch[0] : rawId;
-    if (!id || !id.startsWith('Lifebuoy')) return;
+    if (!id || id.length < 5) return;
     const cqr = String(row[h['CQR']] || '');
     const criteriaRaw = h['24hr'] !== undefined ? String(row[h['24hr']] || '').trim().toLowerCase() : '';
     const meets24hr = criteriaRaw === 'yes' || criteriaRaw === '✓' || criteriaRaw === '1' || criteriaRaw === 'true' || criteriaRaw === 'validated';
@@ -274,7 +274,7 @@ function parseRecs(rows, sheetName) {
   const map = {};
   rows.slice(1).forEach((row, index) => {
     const id = String(row[0] || '').trim();
-    if (!id || id === 'Not Found' || !id.startsWith('Lifebuoy')) return;
+    if (!id || id === 'Not Found' || id.length < 5) return;
     map[id] = {
       status: String(row[h['Ad Status']] || '').trim(),
       recommendation: String(row[h['Recommendations']] || '').trim(),
@@ -324,7 +324,7 @@ function processContent(bsRows, osRows) {
     console.log('BS row 1:', bsRows[1]);
     bsRows.slice(1).forEach(row => {
       const id = String(row[h['Creative ID']] || '').trim();
-      if (!id || !id.startsWith('Lifebuoy')) return;
+      if (!id || id.length < 5) return;
       const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
       const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
      const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
@@ -375,7 +375,7 @@ function processContent(bsRows, osRows) {
 
     osRows.slice(1).forEach(row => {
       const id = String(row[h['Creative ID']] || '').trim();
-      if (!id || !id.startsWith('Lifebuoy')) return;
+      if (!id || id.length < 5) return;
       const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
       const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
       const creatorRaw = h['Creator Profile'] !== undefined ? String(row[h['Creator Profile']] || '').trim() : '';
