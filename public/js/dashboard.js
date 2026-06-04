@@ -668,8 +668,10 @@ function getData() {
       return hasRec && !isActed;
     });
   }
-  if (sf === 'ACTIVE')               data = data.filter(d => d.adStatus === 'ACTIVE');
-  if (sf === 'STOPPED')              data = data.filter(d => d.adStatus === 'STOPPED');
+if (sf === 'ACTIVE')                data = data.filter(d => d.adStatus === 'ACTIVE');
+  if (sf === 'STOPPED')               data = data.filter(d => d.adStatus === 'STOPPED');
+  if (sf === 'BOOSTED')               data = data.filter(d => d.isBoosted);
+  if (sf === 'NOT_BOOSTED')           data = data.filter(d => !d.isBoosted);
   if (sf === 'VALIDATED_NOT_BOOSTED') data = data.filter(d => d.isValidated && !d.isBoosted);
   if (vf === 'validated')     data = data.filter(d => d.isValidated);
   if (vf === 'not_validated') data = data.filter(d => !d.isValidated);
@@ -713,14 +715,16 @@ function renderKPIs(data) {
     if (d.fbOrganic) totalOrgViews += (d.fbOrganic.videoViews||0);
     if (d.ttOrganic) totalOrgViews += (d.ttOrganic.views||0);
   });
+ const boostedCount = data.filter(d=>d.isBoosted).length;
+  const notBoostedCount = data.filter(d=>!d.isBoosted).length;
   const row = document.getElementById('kpi-row');
   if (!row) return;
   row.innerHTML=`
-    <div class="kpi"><div class="kpi-label">Total Assets</div><div class="kpi-val">${totalAssets}</div></div>
-    <div class="kpi"><div class="kpi-label">BS vs OS Split</div><div class="kpi-val">${Math.round(bsCount/(totalAssets||1)*100)}% / ${Math.round(osCount/(totalAssets||1)*100)}%</div></div>
-    <div class="kpi"><div class="kpi-label">Validated Assets</div><div class="kpi-val" style="color:var(--c-good)">${valCount}</div><div class="kpi-sub">Met 24hr Criteria</div></div>
+    <div class="kpi"><div class="kpi-label">Total Assets</div><div class="kpi-val">${totalAssets}</div><div class="kpi-sub">${boostedCount} boosted · ${notBoostedCount} not boosted</div></div>
+    <div class="kpi"><div class="kpi-label">BS vs OS Split</div><div class="kpi-val">${Math.round(bsCount/(totalAssets||1)*100)}% / ${Math.round(osCount/(totalAssets||1)*100)}%</div><div class="kpi-sub">${bsCount} Brand Say · ${osCount} Others Say</div></div>
+    <div class="kpi"><div class="kpi-label">Validated Assets</div><div class="kpi-val" style="color:var(--c-good)">${valCount}</div><div class="kpi-sub">CQR Good or Average</div></div>
     <div class="kpi"><div class="kpi-label">Total Org Views</div><div class="kpi-val" style="color:var(--c-os)">${fmtN(totalOrgViews)}</div><div class="kpi-sub">IG, FB, TT Combined</div></div>
-    <div class="kpi"><div class="kpi-label">Total Paid Impr.</div><div class="kpi-val">${fmtN(totalImp)}</div></div>`;
+    <div class="kpi"><div class="kpi-label">Total Paid Impr.</div><div class="kpi-val">${fmtN(totalImp)}</div><div class="kpi-sub">${boostedCount} amplified assets</div></div>`;
 }
 
 function renderCards(data) {
