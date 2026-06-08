@@ -1131,28 +1131,26 @@ async function submitCreative(e) {
   const tt = document.getElementById('ac-tt').value;
   const repurposed = document.getElementById('ac-repurposed').value || "No";
   const originalId = document.getElementById('ac-original-id').value || "";
-  
-  // 1. Grab the new values
   const duration = document.getElementById('ac-duration').value || "";
   const timestamp = document.getElementById('ac-timestamp').value || "";
-
   const btnConfirm = document.getElementById('ac-confirm-btn');
   const btnCancel = document.getElementById('ac-cancel-btn');
-  // ... (keep existing progress bar setup)
+  const progressContainer = document.getElementById('ac-progress-container');
+  const progressText = document.getElementById('ac-progress-text');
+  const progressBar = document.getElementById('ac-progress-bar');
 
-  try {
-    // ... (keep existing setTimeouts)
+  btnConfirm.disabled = true;
+  btnCancel.disabled = true;
+  document.getElementById('addCreativeModal').style.pointerEvents = 'none';
+  progressContainer.style.display = 'block';
 
-    // 2. Include duration and timestamp in the JSON body
-    const res = await fetch('/api/add-creative', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME, duration, timestamp }),
-      signal: AbortSignal.timeout(120000)
-    });
-      
+  const setProgress = (pct, msg, color) => {
+    progressBar.style.width = pct + '%';
+    progressBar.style.background = color || '#4f46e5';
+    progressText.innerText = msg;
+  };
 
-setProgress(10, 'Submitting creative details...', '#4f46e5');
+  setProgress(10, 'Submitting creative details...', '#4f46e5');
 
   try {
     const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#4f46e5'), 800);
@@ -1160,13 +1158,13 @@ setProgress(10, 'Submitting creative details...', '#4f46e5');
     const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#4f46e5'), 15000);
     const t4 = setTimeout(() => setProgress(90, 'Writing to Google Sheet...', '#4f46e5'), 35000);
 
-const res = await fetch('/api/add-creative', {
+    const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME }),
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME, duration, timestamp }),
       signal: AbortSignal.timeout(120000)
     });
-   clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
 
     const result = await res.json();
     if (result.success) {
