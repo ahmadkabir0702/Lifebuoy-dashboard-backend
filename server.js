@@ -168,12 +168,18 @@ app.post('/api/add-creative', async (req, res) => {
   let sheetName = '';
   let rowData = [];
 
+  // SAFELY HANDLE EMPTY VALUES TO PREVENT COLUMN SHIFTING IN GOOGLE SHEETS
+  const durationVal = duration ? Number(duration) : "";
+  const tsVal = timestamp ? String(timestamp) : "";
+
   if (type === 'Brand Say') {
     sheetName = 'Brand Say Contents';
-    rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', duration || null, ig, fb, tt, timestamp || ''];
+    // Col M (index 12) is duration, Col Q (index 16) is timestamp
+    rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', durationVal, ig || "", fb || "", tt || "", tsVal];
   } else if (type === 'Others Say') {
     sheetName = 'Others Say Contents';
-    rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', '', '', '', '', '', duration || null, ig, fb, tt, timestamp || ''];
+    // Col L (index 11) is duration, Col P (index 15) is timestamp
+    rowData = [date, creativeId, campaign, 'Others Say', "", 'Video', '', '', '', '', '', durationVal, ig || "", fb || "", tt || "", tsVal];
   } else {
     return res.status(400).json({ error: 'Invalid Type selected.' });
   }
@@ -182,10 +188,10 @@ app.post('/api/add-creative', async (req, res) => {
   let geminiFile = null;
 
   try {
-    // Step 1: Write row immediately to get the row number
+    // Write row immediately to get the row number
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.SHEET_ID,
-      range: `${sheetName}!A:Q`,
+      range: `${sheetName}!A:Q`, // Expanded range to Q to ensure Timestamp fits
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values: [rowData] }
@@ -196,14 +202,12 @@ app.post('/api/add-creative', async (req, res) => {
     if (!rowMatch) throw new Error('Could not parse row number from sheet.');
     const rowNum = parseInt(rowMatch[1]);
 
-    // Step 2: If no video is provided, respond to client and exit early
     if (!videoLinkToDownload) {
       return res.json({ success: true, creativeId, aiPending: false });
     }
 
     console.log(`[AI Worker] Starting for ${creativeId}, row ${rowNum}`);
     
-    // Step 3: Save to the OS hidden temp directory to prevent server restarts!
     videoPath = path.join(os.tmpdir(), `temp_video_${Date.now()}.mp4`);
     
     console.log(`[AI Worker] Downloading video: ${videoLinkToDownload}`);
@@ -271,14 +275,12 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
     
     console.log(`[AI Worker] ✅ Sheet updated successfully for ${creativeId}`);
 
-    // Step 4: NOW respond to the frontend, so the page waits for the AI to finish!
     res.json({ success: true, creativeId, aiPending: true });
 
   } catch (error) {
     console.error("[AI Worker ERROR]:", error);
     if (!res.headersSent) res.status(500).json({ error: error.message || 'Failed to process creative.' });
   } finally {
-    // Always clean up files, even if it crashes
     if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
     if (geminiFile) {
       try { await ai.files.delete({ name: geminiFile.name }); } catch(e) {}
