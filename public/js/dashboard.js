@@ -1131,8 +1131,7 @@ async function submitCreative(e) {
   const tt = document.getElementById('ac-tt').value;
   const repurposed = document.getElementById('ac-repurposed').value || "No";
   const originalId = document.getElementById('ac-original-id').value || "";
-  const duration = document.getElementById('ac-duration').value || "";
-  const timestamp = document.getElementById('ac-timestamp').value || "";
+  
   const btnConfirm = document.getElementById('ac-confirm-btn');
   const btnCancel = document.getElementById('ac-cancel-btn');
   const progressContainer = document.getElementById('ac-progress-container');
@@ -1161,7 +1160,7 @@ async function submitCreative(e) {
     const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME, duration, timestamp }),
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME }),
       signal: AbortSignal.timeout(120000)
     });
     clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
