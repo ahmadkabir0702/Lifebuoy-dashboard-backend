@@ -157,7 +157,7 @@ const sheets = google.sheets({ version: 'v4', auth });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.post('/api/add-creative', async (req, res) => {
-  const { date, campaign, type, ig, fb, tt, repurposed, originalId, brand } = req.body;
+  const { campaign, type, ig, fb, tt, repurposed, originalId, brand } = req.body;
   const safeBrand = (brand || 'Brand').replace(/\s+/g, '');
   const safeCampaign = campaign.replace(/\s+/g, '');
   const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
@@ -165,9 +165,9 @@ app.post('/api/add-creative', async (req, res) => {
   const creativeId = `${safeBrand}_${safeCampaign}_${typeCode}_${repCode}_${Date.now()}`;
   const videoLinkToDownload = ig || tt || fb;
 
-  // 1. AUTOMATIC TIMESTAMP (Format: 4/5/2026 14:50)
+  // 1. AUTOMATIC DATE ONLY (Format: 8/6/2026)
   const now = new Date();
-  const timestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  const timestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()}`;
 
   let sheetName = '';
   let rowData = [];
@@ -176,12 +176,12 @@ app.post('/api/add-creative', async (req, res) => {
   if (type === 'Brand Say') {
     sheetName = 'Brand Say Contents';
     durationCol = 'M'; // Column where duration belongs
-    // Put timestamp in Column A (index 0). Leave Col M (index 12) as an empty string for AI to fill later.
+    // Put date in Column A (index 0). Leave Col M (index 12) as an empty string for AI to fill later.
     rowData = [timestamp, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', "", ig || "", fb || "", tt || ""];
   } else if (type === 'Others Say') {
     sheetName = 'Others Say Contents';
     durationCol = 'L'; // Column where duration belongs
-    // Put timestamp in Column A (index 0). Leave Col L (index 11) as an empty string for AI to fill later.
+    // Put date in Column A (index 0). Leave Col L (index 11) as an empty string for AI to fill later.
     rowData = [timestamp, creativeId, campaign, 'Others Say', "", 'Video', '', '', '', '', '', "", ig || "", fb || "", tt || ""];
   } else {
     return res.status(400).json({ error: 'Invalid Type selected.' });
@@ -191,7 +191,7 @@ app.post('/api/add-creative', async (req, res) => {
   let geminiFile = null;
 
   try {
-    // Write row immediately to get the row number (Writes the timestamp in Col A now)
+    // Write row immediately to get the row number (Writes the date in Col A now)
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.SHEET_ID,
       range: `${sheetName}!A:P`, 
@@ -297,6 +297,7 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
     }
   }
 });
+
 
 app.get('/api/dashboard-data', async (req, res) => {
   try {
