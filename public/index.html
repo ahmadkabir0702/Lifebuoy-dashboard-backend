@@ -23,23 +23,15 @@
   </div> <!-- This closes actionModal -->
 
   <!-- Add Creative Modal -->
-  <div id="addCreativeModal" class="modal-overlay">
+ <div id="addCreativeModal" class="modal-overlay">
     <div class="modal-box" style="width: 450px;">
        <h3 class="modal-title">Add New Creative</h3>
        <form id="addCreativeForm" onsubmit="submitCreative(event)">
            <input type="date" id="ac-date" class="modal-input" style="margin-bottom:10px;" required>
            
            <select id="ac-campaign" class="modal-input" style="margin-bottom:10px;" required>
-             <select id="ac-original-id" class="modal-input" style="margin-bottom:10px; display:none;">
-             <option value="" disabled selected>Select Original Creative ID</option>
-             </select>
-           
-           <input type="number" id="ac-duration" class="modal-input" style="margin-bottom:10px;" placeholder="Duration (in seconds)">
-           <input type="text" id="ac-timestamp" class="modal-input" style="margin-bottom:10px;" placeholder="Posting Timestamp (e.g., 4/5/2026 14:50)">
-           <input type="text" id="ac-ig" class="modal-input" style="margin-bottom:10px;" placeholder="IG Link">
              <option value="" disabled selected>Select Campaign</option>
-             <!-- Options populated by JS -->
-           </select>
+             </select>
            
            <select id="ac-type" class="modal-input" style="margin-bottom:10px;" onchange="toggleCreativeFields()" required>
              <option value="" disabled selected>Select Category</option>
@@ -55,21 +47,19 @@
 
            <select id="ac-original-id" class="modal-input" style="margin-bottom:10px; display:none;">
              <option value="" disabled selected>Select Original Creative ID</option>
-             <!-- Options populated by JS -->
-           </select>
+             </select>
            
            <input type="text" id="ac-ig" class="modal-input" style="margin-bottom:10px;" placeholder="IG Link">
            <input type="text" id="ac-fb" class="modal-input" style="margin-bottom:10px;" placeholder="FB Link">
            <input type="text" id="ac-tt" class="modal-input" style="margin-bottom:10px;" placeholder="TikTok Link">
            
-         <!-- Progress Indicator (Hidden by default) -->
-<div id="ac-progress-container" style="display:none; margin-top: 15px; padding: 15px; background: #eef2ff; border-radius: 6px; border: 1px solid #c7d2fe;">
-    <div style="font-weight: bold; color: #4f46e5; margin-bottom: 8px; font-size: 13px;">Processing Creative</div>
-    <div style="background: #e0e7ff; border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 8px;">
-        <div id="ac-progress-bar" style="height: 8px; width: 0%; border-radius: 6px; background: #4f46e5; transition: width 0.6s ease, background 0.3s;"></div>
-    </div>
-    <div id="ac-progress-text" style="font-size: 12px; color: #4338ca;">Starting...</div>
-</div>
+         <div id="ac-progress-container" style="display:none; margin-top: 15px; padding: 15px; background: #eef2ff; border-radius: 6px; border: 1px solid #c7d2fe;">
+             <div style="font-weight: bold; color: #4f46e5; margin-bottom: 8px; font-size: 13px;">Processing Creative</div>
+             <div style="background: #e0e7ff; border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 8px;">
+                 <div id="ac-progress-bar" style="height: 8px; width: 0%; border-radius: 6px; background: #4f46e5; transition: width 0.6s ease, background 0.3s;"></div>
+             </div>
+             <div id="ac-progress-text" style="font-size: 12px; color: #4338ca;">Starting...</div>
+         </div>
 
            <div class="modal-actions" style="margin-top: 15px;">
              <button type="button" id="ac-cancel-btn" class="modal-btn modal-cancel" onclick="closeAddCreativeModal()">Cancel</button>
@@ -79,6 +69,7 @@
     </div>
   </div>
 
+  
   <div class="shell">
     <div class="sidebar">
       <div class="nav-item" onclick="window.location='/logout'">
