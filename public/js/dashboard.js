@@ -1131,22 +1131,26 @@ async function submitCreative(e) {
   const tt = document.getElementById('ac-tt').value;
   const repurposed = document.getElementById('ac-repurposed').value || "No";
   const originalId = document.getElementById('ac-original-id').value || "";
+  
+  // 1. Grab the new values
+  const duration = document.getElementById('ac-duration').value || "";
+  const timestamp = document.getElementById('ac-timestamp').value || "";
+
   const btnConfirm = document.getElementById('ac-confirm-btn');
   const btnCancel = document.getElementById('ac-cancel-btn');
-  const progressContainer = document.getElementById('ac-progress-container');
-  const progressText = document.getElementById('ac-progress-text');
-  const progressBar = document.getElementById('ac-progress-bar');
+  // ... (keep existing progress bar setup)
 
-  btnConfirm.disabled = true;
-  btnCancel.disabled = true;
-  document.getElementById('addCreativeModal').style.pointerEvents = 'none';
-  progressContainer.style.display = 'block';
+  try {
+    // ... (keep existing setTimeouts)
 
-  const setProgress = (pct, msg, color) => {
-    progressBar.style.width = pct + '%';
-    progressBar.style.background = color || '#4f46e5';
-    progressText.innerText = msg;
-  };
+    // 2. Include duration and timestamp in the JSON body
+    const res = await fetch('/api/add-creative', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME, duration, timestamp }),
+      signal: AbortSignal.timeout(120000)
+    });
+      
 
 setProgress(10, 'Submitting creative details...', '#4f46e5');
 
