@@ -30,6 +30,13 @@
            <input type="date" id="ac-date" class="modal-input" style="margin-bottom:10px;" required>
            
            <select id="ac-campaign" class="modal-input" style="margin-bottom:10px;" required>
+             <select id="ac-original-id" class="modal-input" style="margin-bottom:10px; display:none;">
+             <option value="" disabled selected>Select Original Creative ID</option>
+             </select>
+           
+           <input type="number" id="ac-duration" class="modal-input" style="margin-bottom:10px;" placeholder="Duration (in seconds)">
+           <input type="text" id="ac-timestamp" class="modal-input" style="margin-bottom:10px;" placeholder="Posting Timestamp (e.g., 4/5/2026 14:50)">
+           <input type="text" id="ac-ig" class="modal-input" style="margin-bottom:10px;" placeholder="IG Link">
              <option value="" disabled selected>Select Campaign</option>
              <!-- Options populated by JS -->
            </select>
