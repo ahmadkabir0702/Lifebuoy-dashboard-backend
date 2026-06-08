@@ -157,7 +157,7 @@ const sheets = google.sheets({ version: 'v4', auth });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.post('/api/add-creative', async (req, res) => {
-  const { date, campaign, type, ig, fb, tt, repurposed, originalId, brand, duration, timestamp } = req.body;
+  const { campaign, type, ig, fb, tt, repurposed, originalId, brand } = req.body;
   const safeBrand = (brand || 'Brand').replace(/\s+/g, '');
   const safeCampaign = campaign.replace(/\s+/g, '');
   const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
@@ -165,21 +165,24 @@ app.post('/api/add-creative', async (req, res) => {
   const creativeId = `${safeBrand}_${safeCampaign}_${typeCode}_${repCode}_${Date.now()}`;
   const videoLinkToDownload = ig || tt || fb;
 
+  // 1. AUTOMATIC TIMESTAMP (Format: 4/5/2026 14:50)
+  const now = new Date();
+  const timestamp = `${now.getDate()}/${now.getMonth() + 1}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
   let sheetName = '';
   let rowData = [];
-
-  // SAFELY HANDLE EMPTY VALUES TO PREVENT COLUMN SHIFTING IN GOOGLE SHEETS
-  const durationVal = duration ? Number(duration) : "";
-  const tsVal = timestamp ? String(timestamp) : "";
+  let durationCol = '';
 
   if (type === 'Brand Say') {
     sheetName = 'Brand Say Contents';
-    // Col M (index 12) is duration, Col Q (index 16) is timestamp
-    rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', durationVal, ig || "", fb || "", tt || "", tsVal];
+    durationCol = 'M'; // Column where duration belongs
+    // Put timestamp in Column A (index 0). Leave Col M (index 12) as an empty string for AI to fill later.
+    rowData = [timestamp, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', "", ig || "", fb || "", tt || ""];
   } else if (type === 'Others Say') {
     sheetName = 'Others Say Contents';
-    // Col L (index 11) is duration, Col P (index 15) is timestamp
-    rowData = [date, creativeId, campaign, 'Others Say', "", 'Video', '', '', '', '', '', durationVal, ig || "", fb || "", tt || "", tsVal];
+    durationCol = 'L'; // Column where duration belongs
+    // Put timestamp in Column A (index 0). Leave Col L (index 11) as an empty string for AI to fill later.
+    rowData = [timestamp, creativeId, campaign, 'Others Say', "", 'Video', '', '', '', '', '', "", ig || "", fb || "", tt || ""];
   } else {
     return res.status(400).json({ error: 'Invalid Type selected.' });
   }
@@ -188,10 +191,10 @@ app.post('/api/add-creative', async (req, res) => {
   let geminiFile = null;
 
   try {
-    // Write row immediately to get the row number
+    // Write row immediately to get the row number (Writes the timestamp in Col A now)
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.SHEET_ID,
-      range: `${sheetName}!A:Q`, // Expanded range to Q to ensure Timestamp fits
+      range: `${sheetName}!A:P`, 
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values: [rowData] }
@@ -207,7 +210,6 @@ app.post('/api/add-creative', async (req, res) => {
     }
 
     console.log(`[AI Worker] Starting for ${creativeId}, row ${rowNum}`);
-    
     videoPath = path.join(os.tmpdir(), `temp_video_${Date.now()}.mp4`);
     
     console.log(`[AI Worker] Downloading video: ${videoLinkToDownload}`);
@@ -232,14 +234,17 @@ app.post('/api/add-creative', async (req, res) => {
 
     if (fileState.state === 'FAILED') throw new Error('Gemini processing failed.');
 
-    console.log(`[AI Worker] Generating descriptions...`);
+    console.log(`[AI Worker] Generating descriptions and duration...`);
+    
+    // 2. AUTOMATIC DURATION: Instruct Gemini to retrieve the video length
     const prompt = `Watch this video carefully. Extract the following:
 1. "hook": A 1-2 sentence description of the opening hook.
 2. "seg1": (0–25%) Describe the setting, who appears, what action or message is shown.
 3. "seg2": (25–50%) Describe how the narrative develops.
 4. "seg3": (50–75%) Describe the core message or product moment.
 5. "seg4": (75–100%) Describe the closing and call to action.
-Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4". No markdown, no extra text.`;
+6. "duration": The exact length of the video in seconds (number).
+Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
 
     const result = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -256,9 +261,13 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
     const seg2 = analysisData.seg2 || "";
     const seg3 = analysisData.seg3 || "";
     const seg4 = analysisData.seg4 || "";
+    
+    // Grab the duration returned by the AI
+    const duration = analysisData.duration || "";
 
     console.log(`[AI Worker] Analysis done! Pushing to Google Sheet...`);
 
+    // 3. Batch update the sheet with the descriptions AND the duration
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: process.env.SHEET_ID,
       requestBody: {
@@ -269,6 +278,7 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
           { range: `${sheetName}!I${rowNum}`, values: [[seg2]] },
           { range: `${sheetName}!J${rowNum}`, values: [[seg3]] },
           { range: `${sheetName}!K${rowNum}`, values: [[seg4]] },
+          { range: `${sheetName}!${durationCol}${rowNum}`, values: [[duration]] },
         ]
       }
     });
