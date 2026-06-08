@@ -157,7 +157,7 @@ const sheets = google.sheets({ version: 'v4', auth });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.post('/api/add-creative', async (req, res) => {
-  const { date, campaign, type, ig, fb, tt, repurposed, originalId, brand } = req.body;
+  const { date, campaign, type, ig, fb, tt, repurposed, originalId, brand, duration, timestamp } = req.body;
   const safeBrand = (brand || 'Brand').replace(/\s+/g, '');
   const safeCampaign = campaign.replace(/\s+/g, '');
   const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
@@ -170,10 +170,10 @@ app.post('/api/add-creative', async (req, res) => {
 
   if (type === 'Brand Say') {
     sheetName = 'Brand Say Contents';
-    rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', null, ig, fb, tt];
+    rowData = [date, creativeId, repurposed, originalId, campaign, 'Brand Say', '', '', '', '', '', 'Video', duration || null, ig, fb, tt, timestamp || ''];
   } else if (type === 'Others Say') {
     sheetName = 'Others Say Contents';
-    rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', '', '', '', '', '', null, ig, fb, tt];
+    rowData = [date, creativeId, campaign, 'Others Say', null, 'Video', '', '', '', '', '', duration || null, ig, fb, tt, timestamp || ''];
   } else {
     return res.status(400).json({ error: 'Invalid Type selected.' });
   }
@@ -185,7 +185,7 @@ app.post('/api/add-creative', async (req, res) => {
     // Step 1: Write row immediately to get the row number
     const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: process.env.SHEET_ID,
-      range: `${sheetName}!A:P`,
+      range: `${sheetName}!A:Q`,
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values: [rowData] }
@@ -285,6 +285,7 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
     }
   }
 });
+
 app.get('/api/dashboard-data', async (req, res) => {
   try {
    const sheetNames = [
