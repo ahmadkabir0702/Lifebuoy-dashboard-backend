@@ -753,6 +753,7 @@ function renderCards(data) {
     const rchPct = Math.round((d.reach/maxReach)*100);
     const isAct  = d.adStatus === 'ACTIVE';
     const isNotBoosted = d.adStatus === 'NOT_BOOSTED';
+    const displayCqr = (d.cqr && d.cqr !== 'Invalid') ? d.cqr : d.bestOrgCqr || 'Invalid';
 
     const platHTML = d.platform === 'both'
       ? `<span style="color:var(--c-meta);font-weight:700;font-size:10px">META</span> <span style="color:var(--c-muted)">&amp;</span> <span style="color:var(--c-tt);font-weight:700;font-size:10px">TT</span>`
@@ -780,7 +781,7 @@ function renderCards(data) {
         <div class="mini-bar-row"><div class="mini-bar-label">Hook</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hkPct}%;background:${hookColor(d.hookRate)}"></div></div><div class="mini-bar-val" style="color:${hookColor(d.hookRate)}">${(d.hookRate||0).toFixed(1)}%</div></div>
         <div class="mini-bar-row"><div class="mini-bar-label">Hold</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hdPct}%;background:#3b82f6"></div></div><div class="mini-bar-val">${hlValFormatted}</div></div>
       </div>
-    <div class="card-footer"><span class="cqr-badge ${isNotBoosted?'inv-bg':cqrClass(d.cqr)}">${isNotBoosted?'Not Boosted':d.cqr}</span></div>
+    <div class="card-footer"><span class="cqr-badge ${isNotBoosted?'inv-bg':cqrClass(displayCqr)}">${isNotBoosted?'Not Boosted':displayCqr}</span></div>
     </div>`;
   }).join('');
 }
