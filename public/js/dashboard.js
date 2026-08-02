@@ -12,6 +12,40 @@ let currentPlatform = 'both', currentSort = 'hook', sortAscending = false, selec
 let currentPage = 'creatives';
 let chartsInit = {};
 
+async function loadBrands() {
+  try {
+    const res = await fetch('/api/brands');
+    if (!res.ok) return;
+    const { brands, active } = await res.json();
+    const sel = document.getElementById('brand-switcher');
+    if (!sel) return;
+    sel.innerHTML = brands
+      .map(b => `<option value="${b.brand_id}"${b.brand_id === active ? ' selected' : ''}>${b.name}</option>`)
+      .join('');
+    // Only one brand: show it as a label rather than a dropdown
+    if (brands.length < 2) sel.style.pointerEvents = 'none';
+  } catch (e) { console.error('loadBrands', e); }
+}
+
+async function switchBrand(brandId) {
+  try {
+    const res = await fetch('/api/switch-brand', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brand_id: brandId })
+    });
+    if (!res.ok) throw new Error('Switch failed');
+    selectedId = null;
+    await loadData();
+    // Re-render whichever tab is open, so the switch is not lost on tab change
+    if (currentPage === 'kpi' && typeof renderKPIDashboard === 'function') {
+      renderKPIDashboard();
+    }
+  } catch (e) {
+    alert('Could not switch brand: ' + e.message);
+  }
+}
+
 async function loadData() {
   document.getElementById('kpi-row').innerHTML =
     `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">⏳ Loading data...</div>`;
@@ -685,4 +719,4 @@ function resetSubmitUI(delay = 0) {
   }, delay);
 }
 
-loadData();
+loadBrands().then(loadData);
