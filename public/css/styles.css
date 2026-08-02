@@ -96,6 +96,9 @@ input:focus-visible, summary:focus-visible, .nav-item:focus-visible,
   border-left:3px solid transparent;
   transition:color 150ms var(--ease), background-color 150ms var(--ease);
 }
+.sidebar > .nav-item:first-child { order:99; margin-top:auto; border-top:1px solid var(--line-200); padding-top:16px; }
+.sidebar { display:flex; flex-direction:column; }
+
 .nav-item:hover { background:var(--surface-2); color:var(--ink-900); }
 /* §5.1 — active item carries the 3px aqua bar. One of the four places
    aqua is permitted. */
@@ -105,13 +108,14 @@ input:focus-visible, summary:focus-visible, .nav-item:focus-visible,
 }
 
 .dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.nav-item .dot { display:none; }
 
 .main { flex:1; overflow-y:auto; overflow-x:hidden; }
 
 .topbar {
-  position:sticky; top:0; z-index:10; height:56px;
+  position:sticky; top:0; z-index:10; min-height:56px;
   background:var(--surface-0); border-bottom:1px solid var(--line-200);
-  padding:0 24px; display:flex; align-items:center;
+  padding:12px 24px; display:flex; align-items:flex-start;
   justify-content:space-between; gap:12px; flex-wrap:wrap;
 }
 .topbar-title { font:600 24px/30px var(--font-display); color:var(--ink-900); letter-spacing:-.015em; white-space:nowrap; }
@@ -129,7 +133,7 @@ select:hover, .search-input:hover { border-color:var(--ink-300); }
 select:focus, .search-input:focus, .modal-input:focus { border-color:var(--violet); }
 ::placeholder { color:var(--ink-300); }
 
-.filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.filters { display:flex; gap:8px; align-items:center; flex-wrap:wrap; flex:1 1 100%; margin-top:12px; }
 
 .platform-toggle {
   display:flex; border:1px solid var(--line-200);
@@ -256,6 +260,10 @@ select:focus, .search-input:focus, .modal-input:focus { border-color:var(--viole
 .dm-label { font:500 11px/12px var(--font-mono); letter-spacing:.08em; color:var(--ink-400); text-transform:uppercase; margin-bottom:8px; }
 .dm-val { font:700 24px/28px var(--font-display); letter-spacing:-.015em; color:var(--ink-900); }
 .big-cqr { font-size:20px; }
+.dm-val.big-cqr { background:none !important; padding:0; }
+.dm-val.cqr-good { color:var(--pos-ink); }
+.dm-val.cqr-avg  { color:var(--warn-ink); }
+.dm-val.cqr-poor { color:var(--neg-ink); }
 
 /* ---------- §5.5 Buttons ------------------------------------------ */
 .view-btn, .modal-btn, .action-btn {
@@ -375,6 +383,7 @@ select:focus, .search-input:focus, .modal-input:focus { border-color:var(--viole
 .spend-info { display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
 .spend-label { font:400 13px var(--font-ui); color:var(--ink-500); }
 .spend-val   { font:500 13px var(--font-ui); color:var(--ink-900); }
+
 
 .dashboard-grid, .overview-charts { display:grid; gap:16px; }
 
