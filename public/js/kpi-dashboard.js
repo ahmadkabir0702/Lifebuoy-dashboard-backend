@@ -17,6 +17,20 @@ const kpi = {
     } catch(e) { console.warn('Chart error', id, e); }
   },
   isDark: () => false,
+  colors() {
+    return {
+      grid:  '#E6E8F0',   // line-200
+      tick:  '#6B7196',   // ink-400
+      text:  '#545A85',   // ink-500
+      navy:  '#000050',
+      violet:'#31117C',
+      violet400:'#6E5BD6',
+      aqua:  '#2BFFC1',
+      aquaDeep:'#00A47C',
+      neutral:'#8C93B8',
+      crimson:'#B02748'
+    };
+  },
 
   scaleDefaults(c) { return { grid: { color: c.grid }, ticks: { color: c.tick, font: { size: 11 } } }; },
   legendDefaults(c) { return { labels: { color: c.text, font: { size: 11 }, boxWidth: 10, padding: 10 } }; },
