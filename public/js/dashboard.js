@@ -19,11 +19,13 @@ async function loadData() {
     const response = await fetch('/api/dashboard-data');
     if (!response.ok) throw new Error("Backend connection failed.");
     const data = await response.json();
-
     ALL              = data.creatives;
     ACCOUNT_OVERVIEW = data.account;
     CAMPAIGNS        = data.campaigns;
     BRAND_NAME       = data.brand.name;
+
+    const bn = document.getElementById('brand-name');
+    if (bn) bn.textContent = BRAND_NAME;
 
     if (ALL.length === 0) {
       document.getElementById('kpi-row').innerHTML =
