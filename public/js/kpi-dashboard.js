@@ -16,8 +16,7 @@ const kpi = {
       this.instances[id] = new Chart(el, { type, data, options });
     } catch(e) { console.warn('Chart error', id, e); }
   },
-const gc = '#E6E8F0';   // gridlines, line-200
-const tc = '#6B7196';   // axis labels, ink-400
+  isDark: () => false,
 
   scaleDefaults(c) { return { grid: { color: c.grid }, ticks: { color: c.tick, font: { size: 11 } } }; },
   legendDefaults(c) { return { labels: { color: c.text, font: { size: 11 }, boxWidth: 10, padding: 10 } }; },
