@@ -680,7 +680,7 @@ async function submitCreative(e) {
     const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#4f46e5'), 800);
     const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#4f46e5'), 4000);
     const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#4f46e5'), 15000);
-    const t4 = setTimeout(() => setProgress(90, 'Writing to Google Sheet...', '#4f46e5'), 35000);
+    const t4 = setTimeout(() => setProgress(90, 'Saving...', '#4f46e5'), 35000);
 
     const res = await fetch('/api/add-creative', {
       method: 'POST',
