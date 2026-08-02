@@ -53,7 +53,7 @@ function kpiFilteredData() {
 }
 
 function kpiFilteredContent() {
-  let data = typeof ALL_CONTENT !== 'undefined' ? ALL_CONTENT : [];
+  let data = typeof ALL !== 'undefined' ? ALL : [];
   if (kpiFilters.campaign !== 'all') data = data.filter(d => d.campaign === kpiFilters.campaign);
   if (kpiFilters.month    !== 'all') data = data.filter(d => d.month    === kpiFilters.month);
   if (kpiFilters.type     !== 'all') data = data.filter(d => d.type     === kpiFilters.type);
@@ -103,7 +103,7 @@ function renderKPIFilters() {
   if (!wrap) return;
 
   const allData    = typeof ALL         !== 'undefined' ? ALL         : [];
-  const allContent = typeof ALL_CONTENT !== 'undefined' ? ALL_CONTENT : [];
+  const allContent = typeof ALL !== 'undefined' ? ALL : [];
 
   const campaigns = ['all', ...new Set([...allData, ...allContent].map(d => d.campaign).filter(Boolean)).values()].sort();
   const months    = ['all', ...new Set([...allData, ...allContent].map(d => d.month).filter(Boolean)).values()].sort()
