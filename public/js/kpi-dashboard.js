@@ -565,7 +565,7 @@ function renderSection4(allData) {
       {label:'Meta',  data:[parseFloat(mCPR.toFixed(2)),parseFloat(mCPI.toFixed(2))],backgroundColor:'#1877f2',borderRadius:5},
       {label:'TikTok',data:[parseFloat(tCPR.toFixed(2)),parseFloat(tCPI.toFixed(2))],backgroundColor:'#ff0050',borderRadius:5},
     ]
-  },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{y:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>'$'+v.toFixed(2)}},x:{...kpi.scaleDefaults(co)}}});
+  },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{y:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>'Rs'+v.toFixed(2)}},x:{...kpi.scaleDefaults(co)}}});
 
   kpi.make('chart-attention','bar',{
     labels:['Avg Watch Time (s)','Avg VTR %'],
