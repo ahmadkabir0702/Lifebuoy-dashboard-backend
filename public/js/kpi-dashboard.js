@@ -16,15 +16,9 @@ const kpi = {
       this.instances[id] = new Chart(el, { type, data, options });
     } catch(e) { console.warn('Chart error', id, e); }
   },
-  isDark: () => matchMedia('(prefers-color-scheme:dark)').matches,
-  colors() {
-    const dark = this.isDark();
-    return {
-      grid: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-      tick: dark ? '#9a9a9a' : '#6b6b6b',
-      text: dark ? '#f0f0f0' : '#1a1a1a',
-    };
-  },
+const gc = '#E6E8F0';   // gridlines, line-200
+const tc = '#6B7196';   // axis labels, ink-400
+
   scaleDefaults(c) { return { grid: { color: c.grid }, ticks: { color: c.tick, font: { size: 11 } } }; },
   legendDefaults(c) { return { labels: { color: c.text, font: { size: 11 }, boxWidth: 10, padding: 10 } }; },
   safeNum(v) {
