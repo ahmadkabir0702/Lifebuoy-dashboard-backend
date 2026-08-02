@@ -1,19 +1,10 @@
-function colName(n) {
-    let ordA = 'A'.charCodeAt(0), ordZ = 'Z'.charCodeAt(0), len = ordZ - ordA + 1, s = "";
-    while(n >= 0) { s = String.fromCharCode(n % len + ordA) + s; n = Math.floor(n / len) - 1; }
-    return s;
-}
-
 const parseNum = (val) => {
     if (typeof val === 'number') return val;
     if (!val || val === 'Not Found' || val === '-') return 0;
     return parseFloat(String(val).replace(/[^0-9.-]+/g, "")) || 0;
 };
 
-let META = [], TT = [], ALL = [];
-let IG_ORG = {}, FB_ORG = {}, TT_ORG = {};
-let META_RECS = {}, TT_RECS = {};
-let ALL_CONTENT = [], PAID_IDS = new Set();
+let ALL = [];
 let ACCOUNT_OVERVIEW = [];
 let CAMPAIGNS = [];
 let BRAND_NAME = '';
@@ -22,540 +13,30 @@ let currentPage = 'creatives';
 let chartsInit = {};
 
 async function loadData() {
-  document.getElementById('kpi-row').innerHTML = `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">⏳ Loading data...</div>`;
+  document.getElementById('kpi-row').innerHTML =
+    `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">⏳ Loading data...</div>`;
   try {
     const response = await fetch('/api/dashboard-data');
     if (!response.ok) throw new Error("Backend connection failed.");
-    const [mR, tR, mRecR, tRecR, bsR, osR, igR, fbR, ttOrgR, aoR, filtersR] = await response.json();
+    const data = await response.json();
 
-    META_RECS = parseRecs(mRecR || [], 'Recommendation - Meta');
-    TT_RECS   = parseRecs(tRecR || [], 'Recommendation - Tiktok');
-    META = parsePaid(mR || [], 'meta');
-    TT   = parsePaid(tR || [], 'tiktok');
-    IG_ORG = parseOrganic(igR || [], 'ig');
-    FB_ORG = parseOrganic(fbR || [], 'fb');
-    TT_ORG = parseOrganic(ttOrgR || [], 'tt');
-    ACCOUNT_OVERVIEW = parseAccountOverview(aoR || []);
-    const filtersData = parseFilters(filtersR || []);
-    CAMPAIGNS = filtersData.campaigns;
-    BRAND_NAME = filtersData.brand;
-    processContent(bsR || [], osR || []);
-    enrichCreatives();
-    ALL = mergeAllCreatives(META, TT);
+    ALL              = data.creatives;
+    ACCOUNT_OVERVIEW = data.account;
+    CAMPAIGNS        = data.campaigns;
+    BRAND_NAME       = data.brand.name;
 
     if (ALL.length === 0) {
-      document.getElementById('kpi-row').innerHTML = `<div style="grid-column:1/-1;padding:20px;color:var(--c-avg)">No creatives found in data.</div>`;
+      document.getElementById('kpi-row').innerHTML =
+        `<div style="grid-column:1/-1;padding:20px;color:var(--c-avg)">No creatives found.</div>`;
       return;
     }
     populateFilters();
     render();
   } catch(err) {
-    document.getElementById('kpi-row').innerHTML = `<div style="grid-column:1/-1;padding:20px;color:var(--c-poor)">Error: ${err.message}</div>`;
+    document.getElementById('kpi-row').innerHTML =
+      `<div style="grid-column:1/-1;padding:20px;color:var(--c-poor)">Error: ${err.message}</div>`;
     console.error(err);
   }
-}
-
-function mergeAllCreatives(metaData, ttData) {
-  const mergedMap = {};
- ALL_CONTENT.forEach(c => {
-    mergedMap[c.id] = {
-      ...c, platforms: [], _meta: null, _tt: null,
-      spend: 0, reach: 0, impressions: 0, hookRate: 0, holdRate: 0, watchTime: 0, vtr: 0, vp: 1,
-      ret: [100, 0, 0, 0, 0, 0], adStatus: 'NOT_BOOSTED', cqr: 'Invalid',
-      platform: 'both'
-    };
-  });
-
-  const addPaid = (c, source) => {
-    if (!mergedMap[c.id]) mergedMap[c.id] = { ...c, platforms: [] };
-    const e = mergedMap[c.id];
-    e.platforms.push(c.platform);
-    if (e.platform !== 'both') e.platform = e.platforms.length > 1 ? 'both' : c.platform;
-    e.spend += c.spend;
-    e.reach += c.reach;
-    e.impressions += c.impressions;
-    e.holdRate = Math.max(e.holdRate, c.holdRate);
-    e.hookRate = e.hookRate ? (e.hookRate + c.hookRate) / 2 : c.hookRate;
-    e.watchTime = e.watchTime ? (e.watchTime + c.watchTime) / 2 : c.watchTime;
-    e.vtr = e.vtr ? (e.vtr + c.vtr) / 2 : c.vtr;
-    e.adStatus = (e.adStatus === 'ACTIVE' || c.adStatus === 'ACTIVE') ? 'ACTIVE' : 'STOPPED';
-    if (!e.duration && c.duration) e.duration = c.duration;
-    const order = {Good:0, Average:1, Poor:2, Invalid:3};
-    if ((order[c.cqr] || 4) < (order[e.cqr] || 4)) e.cqr = c.cqr;
-    if (source === 'meta') e._meta = c;
-    if (source === 'tiktok') e._tt = c;
-  };
-
-  metaData.forEach(c => addPaid(c, 'meta'));
-  ttData.forEach(c => addPaid(c, 'tiktok'));
-
-  return Object.values(mergedMap).map(d => {
-    if (d.type === 'Others Say') {
-      const igCqr = d.igOrganic?.cqr;
-      const ttCqr = d.ttOrganic?.cqr;
-      d.isValidated = ['Good', 'Average'].includes(igCqr) || ['Good', 'Average'].includes(ttCqr);
-      d.bestOrgCqr = (igCqr === 'Good' || ttCqr === 'Good') ? 'Good' : (d.isValidated ? 'Average' : null);
-} else {
-      const order = {Good:0, Average:1, Poor:2};
-      let minCqr = 3;
-      ['igOrganic', 'fbOrganic', 'ttOrganic'].forEach(p => {
-        if (d[p] && order[d[p].cqr] !== undefined) minCqr = Math.min(minCqr, order[d[p].cqr]);
-      });
-      d.isValidated = minCqr <= 1;
-      d.bestOrgCqr = minCqr === 0 ? 'Good' : (minCqr === 1 ? 'Average' : null);
-    }
-
-    d.isBoosted = d.spend > 0;
-    d.needsBoostWarning = false;
-    if (d.isValidated && !d.isBoosted) {
-      const m = d.id.match(/_(\d{8})$/);
-      if (m) {
-        const postDate = new Date(`${m[1].slice(0,4)}-${m[1].slice(4,6)}-${m[1].slice(6,8)}`);
-        if ((new Date() - postDate) / 3600000 > 48) d.needsBoostWarning = true;
-      }
-    }
-    return d;
-  });
-}
-
-function parsePaid(rows, platform) {
-  if (!rows || rows.length < 2) return [];
-  const headers = rows[0].map(h => String(h).trim().toLowerCase());
-  const h = {};
-  headers.forEach((name, i) => {
-    if (name.includes('creative id') || name.includes('ad name')) h['Creative ID'] = i;
-    if (name.includes('spend') || name.includes('amount')) h['Spend'] = i;
-    if (name.includes('reach')) h['Reach'] = i;
-    if (name.includes('impressions')) h['Impressions'] = i;
-    if (name.includes('hook rate') && !name.includes('quality')) h['Hook Rate %'] = i;
-    if (name.includes('hook') && name.includes('quality')) h['Hook Rate (Quality)'] = i;
-    if (name.includes('hold rate') && !name.includes('quality')) h['Hold Rate'] = i;
-    if (name.includes('hold') && name.includes('quality')) h['Hold Rate (Quality)'] = i;
-    if (name.includes('vtr')) h['VTR %'] = i;
-    if (name.includes('watch time') || name.includes('play time')) h['Avg Watch Time (sec)'] = i;
-    if (name === 'cqr' || name.includes('creative quality')) h['CQR'] = i;
-    if (name.includes('status') || name.includes('delivery')) h['Ad Status'] = i;
-    if (name.includes('video plays')) h['Video Plays'] = i;
-    if (name.includes('25%')) h['25% Watched'] = i;
-    if (name.includes('50%')) h['50% Watched'] = i;
-    if (name.includes('75%')) h['75% Watched'] = i;
-    if (name.includes('100%')) h['100% Watched'] = i;
-    if (name.includes('video duration') || name === 'duration (s)' || name === 'duration(s)') h['Duration'] = i;
-  });
-
-  const cqrOrder = {Good:0, Average:1, Poor:2, Invalid:3};
-  const avg = arr => arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0;
-  const isActive = s => { const u = String(s).trim().toUpperCase(); return u==='ACTIVE'||u==='ENABLE'; };
-  const map = {};
-
-  rows.slice(1).forEach(row => {
-    // Creative ID is col F (index 5) — array formula in Google Sheets, resolves to Lifebuoy ID
-    const creativeId = String(row[5] || row[h['Creative ID']] || '').trim();
-    if (!creativeId || creativeId === 'Not Found' || creativeId.length < 5) return;
-
-    const spend = parseNum(row[h['Spend']]);
-    const reach = parseNum(row[h['Reach']]);
-    const impr  = parseNum(row[h['Impressions']]);
-    const hookRate = parseNum(row[h['Hook Rate %']]);
-    const hookQual = String(row[h['Hook Rate (Quality)']] || '');
-    const holdRate = parseNum(row[h['Hold Rate']]);
-    const holdQual = String(row[h['Hold Rate (Quality)']] || '');
-    const vtr      = parseNum(row[h['VTR %']]);
-    const watchTime= parseNum(row[h['Avg Watch Time (sec)']]);
-    const cqr      = String(row[h['CQR']] || '');
-    const adSt     = String(row[h['Ad Status']] || '');
-    const vp       = parseNum(row[h['Video Plays']]) || 1;
-    const w25 = parseNum(row[h['25% Watched']]);
-    const w50 = parseNum(row[h['50% Watched']]);
-    const w75 = parseNum(row[h['75% Watched']]);
-    const w100= parseNum(row[h['100% Watched']]);
-    const durRaw = h['Duration'] !== undefined ? String(row[h['Duration']] || '').replace(/[^0-9.]/g, '') : '';
-
-    if (!map[creativeId]) {
-      map[creativeId] = {
-        creativeId, spend:0, reach:0, impressions:0, hookRates:[], holdRates:[], vtrs:[], watchTimes:[],
-        cqr:'', hookQual:'', holdQual:'', vp:0, w25:0, w50:0, w75:0, w100:0, hasActive:false, duration:null
-      };
-    }
-    const d = map[creativeId];
-    d.spend += spend; d.reach = Math.max(d.reach, reach); d.impressions += impr;
-    if (hookRate > 0) d.hookRates.push(hookRate);
-    if (holdRate > 0) d.holdRates.push(holdRate);
-    if (vtr > 0) d.vtrs.push(vtr);
-    if (watchTime > 0) d.watchTimes.push(watchTime);
-    d.vp += vp; d.w25 += w25; d.w50 += w50; d.w75 += w75; d.w100 += w100;
-    if (isActive(adSt)) d.hasActive = true;
-    if (!d.duration && durRaw) d.duration = parseFloat(durRaw) || null;
-    if (!d.cqr || (cqrOrder[cqr]??9) < (cqrOrder[d.cqr]??9)) {
-      d.cqr = cqr; d.hookQual = hookQual; d.holdQual = holdQual;
-    }
-  });
-
-  const r1 = v => Math.round(v*10)/10;
-  return Object.values(map).map(d => {
-    const vp = d.vp || 1;
-    const m  = d.creativeId.match(/Video(\d+)_(BrandSay|OthersSay)/);
-    return {
-      id: d.creativeId, short: m ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}` : d.creativeId,
-      type: d.creativeId.includes('BrandSay') ? 'Brand Say' : 'Others Say',
-      spend: Math.round(d.spend), reach: d.reach, impressions: d.impressions,
-      hookRate: r1(avg(d.hookRates)), hookQual: d.hookQual,
-      holdRate: r1(avg(d.holdRates)), holdQual: d.holdQual,
-      vtr: r1(avg(d.vtrs)), watchTime: r1(avg(d.watchTimes)), cqr: d.cqr,
-      adStatus: d.hasActive ? 'ACTIVE' : 'STOPPED',
-      ret: [100, r1(avg(d.hookRates)), r1(d.w25/vp*100), r1(d.w50/vp*100), r1(d.w75/vp*100), r1(d.w100/vp*100)],
-      platform, month: getMonthFromId(d.creativeId), campaign: getCampaignFromId(d.creativeId),
-      duration: d.duration,
-      recommendation: '', actionStatus: '', actionBy: '', actionDate: '', agency: ''
-    };
-  });
-}
-
-function parseOrganic(rows, platform) {
-  if (!rows || rows.length < 2) return {};
-  const headers = rows[0].map(h => String(h).trim().toLowerCase());
-  const h = {};
-  headers.forEach((name, i) => {
-    if (name.includes('creative id')) h['Creative ID'] = i;
-    if (name.includes('views') && !name.includes('video')) h['Views'] = i;
-    if (name.includes('video views')) h['Video Views'] = i;
-    if (name.includes('reach')) h['Reach'] = i;
-    if (name.includes('likes')) h['Likes'] = i;
-    if (name.includes('reactions')) h['Reactions'] = i;
-    if (name.includes('comments')) h['Comments'] = i;
-    if (name.includes('saves')) h['Saves'] = i;
-    if (name.includes('shares')) h['Shares'] = i;
-    if (name === 'cqr') h['CQR'] = i;
-    if (name.includes('24hr') || name.includes('24 hr') || name.includes('criteria')) h['24hr'] = i;
-    if (name.includes('avg watch') || name.includes('average watch')) h['AvgWatch'] = i;
-  });
-
-  const map = {};
-  rows.slice(1).forEach(row => {
-    const rawId = String(row[h['Creative ID']] || '').trim();
-    // Handle formula cells whose string includes the ID after a comma+quote
-    const idMatch = rawId.match(/LifebuoyBW[^"'\s]*/);
-    const id = idMatch ? idMatch[0] : rawId;
-    if (!id || id.length < 5) return;
-    const cqr = String(row[h['CQR']] || '');
-    const criteriaRaw = h['24hr'] !== undefined ? String(row[h['24hr']] || '').trim().toLowerCase() : '';
-    const meets24hr = criteriaRaw === 'yes' || criteriaRaw === '✓' || criteriaRaw === '1' || criteriaRaw === 'true' || criteriaRaw === 'validated';
-
-    if (platform === 'ig') {
-      const views = parseNum(row[h['Views']]);
-      if (views > 0) map[id] = { views, reach: parseNum(row[h['Reach']]), likes: parseNum(row[h['Likes']]), comments: parseNum(row[h['Comments']]), saves: parseNum(row[h['Saves']]), shares: parseNum(row[h['Shares']]), avgWatchTime: parseNum(row[h['AvgWatch']]), cqr, meets24hr };
-    } else if (platform === 'fb') {
-      const videoViews = parseNum(row[h['Video Views']]);
-      const reactions  = parseNum(row[h['Reactions']]);
-      if (videoViews > 0 || reactions > 0) map[id] = { videoViews, reactions, comments: parseNum(row[h['Comments']]), shares: parseNum(row[h['Shares']]), cqr, meets24hr };
-    } else if (platform === 'tt') {
-      const views = parseNum(row[h['Views']]);
-      if (views > 0) map[id] = { views, likes: parseNum(row[h['Likes']]), comments: parseNum(row[h['Comments']]), shares: parseNum(row[h['Shares']]), saves: parseNum(row[h['Saves']]), avgWatchTime: parseNum(row[h['AvgWatch']]), cqr, meets24hr };
-    }
-  });
-  return map;
-}
-
-function parseRecs(rows, sheetName) {
-  if (!rows || rows.length < 2) return {};
-  const headers = rows[0].map(h => String(h).trim().toLowerCase());
-  const h = {};
-  headers.forEach((name, i) => {
-    if (name.includes('recommendation')) h['Recommendations'] = i;
-    if (name.includes('status') && !name.includes('action')) h['Ad Status'] = i;
-    if (name.includes('action status')) h['Action Status'] = i;
-    if (name.includes('actioned by')) h['Actioned By'] = i;
-    if (name.includes('action date')) h['Action Date'] = i;
-    if (name.includes('agency')) h['Assigned Agency'] = i;
-    if (!h[name]) h[name] = i;
-  });
-
-  const map = {};
-  rows.slice(1).forEach((row, index) => {
-    const id = String(row[0] || '').trim();
-    if (!id || id === 'Not Found' || id.length < 5) return;
-    map[id] = {
-      status: String(row[h['Ad Status']] || '').trim(),
-      recommendation: String(row[h['Recommendations']] || '').trim(),
-      actionStatus: String(row[h['Action Status']] || '').trim(),
-      actionBy: String(row[h['Actioned By']] || '').trim(),
-      actionDate: String(row[h['Action Date']] || '').trim(),
-      agency: String(row[h['Assigned Agency']] || '').trim(),
-      sheetName, rowNum: index + 2,
-      colStatus: h['Action Status'] !== undefined ? colName(h['Action Status']) : null,
-      colBy: h['Actioned By'] !== undefined ? colName(h['Actioned By']) : null,
-      colDate: h['Action Date'] !== undefined ? colName(h['Action Date']) : null,
-      colAgency: h['Assigned Agency'] !== undefined ? colName(h['Assigned Agency']) : null
-    };
-  });
-  return map;
-}
-
-function processContent(bsRows, osRows) {
-  ALL_CONTENT = [];
-  PAID_IDS = new Set([...META.map(c=>c.id), ...TT.map(c=>c.id)]);
-
-  const commonHeaders = (headers, h) => {
-    headers.forEach((name, i) => {
-      if (name === 'creative id') h['Creative ID'] = i;
-      if (name.includes('campaign')) h['Campaign'] = i;
-      if (name === 'ig') h['IG'] = i;
-      if (name === 'fb') h['FB'] = i;
-      if (name === 'tt') h['TT'] = i;
-      if (name.includes('repurposed') && !name.includes('original')) h['Is Repurposed'] = i;
-      if (name.includes('original creative')) h['Original Creative ID'] = i;
-      if (name.includes('content hook')) h['Content Hook'] = i;
-      if (name.includes('1st') || name.includes('0-25') || name.includes('0–25')) h['Seg1'] = i;
-      if (name.includes('2nd') || name.includes('25-50') || name.includes('25–50')) h['Seg2'] = i;
-      if (name.includes('3rd') || name.includes('50-75') || name.includes('50–75')) h['Seg3'] = i;
-      if (name.includes('4th') || name.includes('75-100') || name.includes('75–100')) h['Seg4'] = i;
-      if (name.includes('content type')) h['Content Type'] = i;
-      if (name === 'duration' || name.includes('duration (s') || name.includes('duration(s')) h['Duration'] = i;
-    });
-  };
-
-  if (bsRows && bsRows.length > 1) {
-    const headers = bsRows[0].map(h => String(h).trim().toLowerCase());
-    const h = {};
-    commonHeaders(headers, h);
-      console.log('BS headers:', headers);
-    console.log('BS h map:', h);
-    console.log('BS row 1:', bsRows[1]);
-    bsRows.slice(1).forEach(row => {
-      const id = String(row[h['Creative ID']] || '').trim();
-      if (!id || id.length < 5) return;
-      const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
-      const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
-     const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
-      const parts = id.split('_');
-      const shortName = m
-        ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}`
-        : (parts.length >= 4 ? `${parts[1]} · ${parts[2]} · ${parts[3]}` : id);
-      ALL_CONTENT.push({
-        id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
-        type: 'Brand Say', month: getMonthFromId(id), isPaid: PAID_IDS.has(id),
-        igLink: String(row[h['IG']]||''), fbLink: String(row[h['FB']]||''), ttLink: String(row[h['TT']]||''),
-        isRepurposed: isRep, originalId: String(row[h['Original Creative ID']] || '').trim(),
-        contentHook: String(row[h['Content Hook']] || '').trim(),
-        segments: [String(row[h['Seg1']]||'').trim(), String(row[h['Seg2']]||'').trim(), String(row[h['Seg3']]||'').trim(), String(row[h['Seg4']]||'').trim()].filter(Boolean),
-        contentType: String(row[h['Content Type']] || '').trim(),
-        duration, creatorProfile: null,
-        igOrganic: null, fbOrganic: null, ttOrganic: null
-      });
-    });
-  }
-
-  if (osRows && osRows.length > 1) {
-    const headers = osRows[0].map(h => String(h).trim().toLowerCase());
-    const h = {};
-    commonHeaders(headers, h);
-    headers.forEach((name, i) => {
-      if (name.includes('creator profile') || name === 'creator') h['Creator Profile'] = i;
-      if (name === 'ttviews') h['TTViews'] = i;
-      if (name === 'ttlikes') h['TTLikes'] = i;
-      if (name === 'ttcomments') h['TTComments'] = i;
-      if (name === 'ttshares') h['TTShares'] = i;
-      if (name === 'ttsaves') h['TTSaves'] = i;
-      if (name.includes('ttavg') || (name.startsWith('tt') && name.includes('watch'))) h['TTAvgWatch'] = i;
-      if (name === 'ttcqr') h['TTCQR'] = i;
-      if (name === 'igviews') h['IGViews'] = i;
-      if (name === 'iglikes') h['IGLikes'] = i;
-      if (name === 'igcomments') h['IGComments'] = i;
-      if (name === 'igshares') h['IGShares'] = i;
-      if (name === 'igsaves') h['IGSaves'] = i;
-      if (name.includes('igavg') || (name.startsWith('ig') && name.includes('watch'))) h['IGAvgWatch'] = i;
-      if (name === 'igcqr') h['IGCQR'] = i;
-      if (name === 'fbviews') h['FBViews'] = i;
-      if (name === 'fblikes') h['FBLikes'] = i;
-      if (name === 'fbcomments') h['FBComments'] = i;
-      if (name === 'fbshares') h['FBShares'] = i;
-      if (name === 'fbsaves') h['FBSaves'] = i;
-    });
-
-    osRows.slice(1).forEach(row => {
-      const id = String(row[h['Creative ID']] || '').trim();
-      if (!id || id.length < 5) return;
-      const isRep = String(row[h['Is Repurposed']] || '').trim().toLowerCase() === 'yes';
-      const duration = h['Duration'] !== undefined ? parseNum(row[h['Duration']]) || null : null;
-      const creatorRaw = h['Creator Profile'] !== undefined ? String(row[h['Creator Profile']] || '').trim() : '';
-
-      const ttViews = h['TTViews'] !== undefined ? parseNum(row[h['TTViews']]) : 0;
-      const ttOrganic = ttViews > 0 ? {
-        views: ttViews, likes: parseNum(row[h['TTLikes']]), comments: parseNum(row[h['TTComments']]),
-        shares: parseNum(row[h['TTShares']]), saves: parseNum(row[h['TTSaves']]),
-        avgWatchTime: parseNum(row[h['TTAvgWatch']]), cqr: String(row[h['TTCQR']] || '').trim()
-      } : null;
-
-      const igViews = h['IGViews'] !== undefined ? parseNum(row[h['IGViews']]) : 0;
-      const igOrganic = igViews > 0 ? {
-        views: igViews, likes: parseNum(row[h['IGLikes']]), comments: parseNum(row[h['IGComments']]),
-        shares: parseNum(row[h['IGShares']]), saves: parseNum(row[h['IGSaves']]),
-        avgWatchTime: parseNum(row[h['IGAvgWatch']]), cqr: String(row[h['IGCQR']] || '').trim()
-      } : null;
-
-      const fbViews = h['FBViews'] !== undefined ? parseNum(row[h['FBViews']]) : 0;
-      const fbOrganic = fbViews > 0 ? {
-        videoViews: fbViews, reactions: parseNum(row[h['FBLikes']]),
-        comments: parseNum(row[h['FBComments']]), shares: parseNum(row[h['FBShares']]),
-        saves: parseNum(row[h['FBSaves']]), cqr: ''
-      } : null;
-
-      const m = id.match(/Video(\d+)_(BrandSay|OthersSay)/);
-      const parts = id.split('_');
-      const shortName = m
-        ? `Video${m[1]} ${m[2]==='BrandSay'?'Brand Say':'Others Say'}`
-        : (parts.length >= 4 ? `${parts[1]} · ${parts[2]} · ${parts[3]}` : id);
-
-      ALL_CONTENT.push({
-        id, short: shortName, campaign: String(row[h['Campaign']] || '').trim() || getCampaignFromId(id),
-        type: 'Others Say', month: getMonthFromId(id), isPaid: PAID_IDS.has(id),
-        igLink: String(row[h['IG']]||''), fbLink: String(row[h['FB']]||''), ttLink: String(row[h['TT']]||''),
-        isRepurposed: isRep, originalId: String(row[h['Original Creative ID']] || '').trim(),
-        contentHook: String(row[h['Content Hook']] || '').trim(),
-        segments: [String(row[h['Seg1']]||'').trim(), String(row[h['Seg2']]||'').trim(), String(row[h['Seg3']]||'').trim(), String(row[h['Seg4']]||'').trim()].filter(Boolean),
-        contentType: String(row[h['Content Type']] || '').trim(),
-        duration, creatorProfile: creatorRaw,
-        igOrganic, fbOrganic, ttOrganic
-      });
-    });
-  }
-}
-
-function parseAccountOverview(rows) {
-  if (!rows || rows.length < 2) return [];
-  const headers = rows[0].map(h => String(h).trim().toLowerCase());
-  const h = {};
-  headers.forEach((name, i) => {
-    if (name === 'actmonth' || name === 'month') h['ActMonth'] = i;
-    if (name === 'actspend') h['ActSpend'] = i;
-    if (name === 'actreach') h['ActReach'] = i;
-    if (name === 'actimpressions') h['ActImpressions'] = i;
-    if (name === 'actfrequency') h['ActFrequency'] = i;
-    if (name.includes('actengagement') || name.includes('engagement rate')) h['ActEngagement'] = i;
-    if (name === 'kpimonth') h['KpiMonth'] = i;
-    if (name === 'kpispend') h['KpiSpend'] = i;
-    if (name === 'kpireach') h['KpiReach'] = i;
-    if (name === 'kpiimpressions') h['KpiImpressions'] = i;
-    if (name === 'kpifrequency') h['KpiFrequency'] = i;
-  });
-
-
-  const seen = new Set();
-  return rows.slice(1).map(row => {
-    const actMonth = String(row[h['ActMonth']] || '').trim();
-    if (!actMonth || seen.has(actMonth)) return null;
-    seen.add(actMonth);
-    const r = {
-      month: actMonth,
-      actSpend: parseNum(row[h['ActSpend']]), actReach: parseNum(row[h['ActReach']]),
-      actImpressions: parseNum(row[h['ActImpressions']]), actFrequency: parseNum(row[h['ActFrequency']]),
-      actEngagement: parseNum(row[h['ActEngagement']]),
-      kpiSpend: parseNum(row[h['KpiSpend']]), kpiReach: parseNum(row[h['KpiReach']]),
-      kpiImpressions: parseNum(row[h['KpiImpressions']]), kpiFrequency: parseNum(row[h['KpiFrequency']])
-    };
-    return (r.actSpend > 0 || r.kpiSpend > 0) ? r : null;
-  }).filter(Boolean);
-}
-
-function parseFilters(rows) {
-  const result = { brand: '', campaigns: [] };
-  if (!rows || rows.length === 0) return result;
-
-  // Extract brand name — row where col B = "brand", value in col C
-  rows.forEach(row => {
-    if (String(row[1] || '').trim().toLowerCase() === 'brand') {
-      result.brand = String(row[2] || '').trim();
-    }
-  });
-
-  // Extract campaigns — find "Campaign FIlters" header in col E
-  let campColIndex = -1, campHeaderRow = -1;
-  rows.forEach((row, ri) => {
-    row.forEach((cell, ci) => {
-      if (String(cell).toLowerCase().includes('campaign') && String(cell).toLowerCase().includes('filter')) {
-        campColIndex = ci;
-        campHeaderRow = ri;
-      }
-    });
-  });
-  if (campColIndex !== -1) {
-    rows.slice(campHeaderRow + 1).forEach(row => {
-      const val = String(row[campColIndex] || '').trim();
-      if (val && val !== 'undefined') result.campaigns.push(val);
-    });
-  }
-  return result;
-}
-
-function enrichCreatives() {
-  const contentMap = {};
-  ALL_CONTENT.forEach(c => { contentMap[c.id] = c; });
-
-  [...META, ...TT, ...ALL_CONTENT].forEach(c => {
-    if (c.spend !== undefined) {
-      const recs = c.platform === 'meta' ? META_RECS : TT_RECS;
-      if (recs[c.id]) {
-        if (recs[c.id].status) c.adStatus = recs[c.id].status;
-        if (recs[c.id].recommendation) c.recommendation = recs[c.id].recommendation;
-        c.actionStatus = recs[c.id].actionStatus; c.actionBy = recs[c.id].actionBy;
-        c.actionDate = recs[c.id].actionDate; c.agency = recs[c.id].agency; c.recDetails = recs[c.id];
-      }
-    }
-
-    if (contentMap[c.id]) {
-      const content = contentMap[c.id];
-      c.isRepurposed   = content.isRepurposed;
-      c.creativeLink   = content.igLink || content.ttLink || content.fbLink || '';
-      c.contentHook    = content.contentHook || '';
-      c.segments       = content.segments || [];
-      c.contentType    = content.contentType || '';
-      c.duration       = c.duration || content.duration;
-      c.creatorProfile = content.creatorProfile || null;
-      c.ttLink         = content.ttLink || '';
-
-      const rawOrig = content.originalId || '';
-      c.originalName = rawOrig; c.originalUrl = ''; c.extractedOrigId = null;
-      if (rawOrig) {
-        const m = rawOrig.match(/(https?:\/\/[^\s_]+)/);
-        if (m) c.originalUrl = m[1];
-        if (rawOrig.includes('http')) c.originalName = rawOrig.split('_http')[0].replace(/_/g, ' ');
-        const parts = rawOrig.split('_');
-        if (parts.length >= 2) c.extractedOrigId = parts[0] + '_' + parts[1];
-      }
-    }
-
-    if (c.type === 'Others Say' && contentMap[c.id]) {
-      c.igOrganic = contentMap[c.id].igOrganic || null;
-      c.fbOrganic = contentMap[c.id].fbOrganic || null;
-      c.ttOrganic = contentMap[c.id].ttOrganic || null;
-    } else {
-      c.igOrganic = IG_ORG[c.id] || null;
-      c.fbOrganic = FB_ORG[c.id] || null;
-      c.ttOrganic = TT_ORG[c.id] || null;
-    }
-  });
-}
-
-function getMonthFromId(id) {
-  const match = id.match(/_(\d{8})$/);
-  if (!match) {
-    const tsMatch = id.match(/_(\d{13})$/);
-    if (tsMatch) {
-      const d = new Date(parseInt(tsMatch[1]));
-      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-      return `${months[d.getMonth()]} ${d.getFullYear()}`;
-    }
-    return 'Unknown';
-  }
-  const d = match[1];
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[parseInt(d.substring(4,6))-1]} ${d.substring(0,4)}`;
-}
-
-function getCampaignFromId(id) {
-  const parts = id.split('_');
-  if (parts.length < 2) return 'Unknown';
-  return parts[1].replace(/([A-Z])/g,' $1').trim();
 }
 
 function extractCreatorInfo(creatorProfile, ttLink) {
@@ -1042,25 +523,34 @@ async function confirmAction() {
   const origText = btn.innerText;
   btn.innerText = 'Updating...'; btn.disabled = true;
   try {
-    const creative  = ALL.find(c=>c.id===pendingAction.id);
-    const sourceItem = pendingAction.platform === 'Meta' ? (creative._meta||creative) : (creative._tt||creative);
-    const rec = sourceItem.recDetails;
-    if (!rec || !rec.sheetName || !rec.colStatus) throw new Error("Could not map recommendation to Sheet.");
-    const dateStr = new Date().toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'});
-    const updateData = [];
-    if (rec.colStatus) updateData.push({ range:`${rec.sheetName}!${rec.colStatus}${rec.rowNum}`, values:[['Actioned']] });
-    if (rec.colBy)     updateData.push({ range:`${rec.sheetName}!${rec.colBy}${rec.rowNum}`,     values:[[name]] });
-    if (rec.colDate)   updateData.push({ range:`${rec.sheetName}!${rec.colDate}${rec.rowNum}`,   values:[[dateStr]] });
-    if (rec.colAgency) updateData.push({ range:`${rec.sheetName}!${rec.colAgency}${rec.rowNum}`, values:[[agency]] });
-    const res = await fetch('/api/update-action', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({updateData}) });
+    const creative = ALL.find(c => c.id === pendingAction.id);
+    const platform = pendingAction.platform === 'Meta' ? 'meta' : 'tiktok';
+    const sourceItem = platform === 'meta' ? (creative._meta || creative) : (creative._tt || creative);
+    const dateStr = new Date().toISOString().slice(0, 10);
+
+    const res = await fetch('/api/update-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        creative_id: pendingAction.id,
+        platform,
+        action_status: 'Actioned',
+        actioned_by: name,
+        action_date: dateStr,
+        agency
+      })
+    });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    sourceItem.actionStatus = 'Actioned'; sourceItem.actionBy = name; sourceItem.actionDate = dateStr; sourceItem.agency = agency;
-    rec.actionStatus = 'Actioned'; rec.actionBy = name; rec.actionDate = dateStr; rec.agency = agency;
+
+    sourceItem.actionStatus = 'Actioned';
+    sourceItem.actionBy = name;
+    sourceItem.actionDate = dateStr;
+    sourceItem.agency = agency;
     closeActionModal();
     renderDetail(creative);
   } catch(err) {
-    alert("Failed to update sheet: " + err.message);
+    alert("Failed to update: " + err.message);
   } finally {
     btn.innerText = origText; btn.disabled = false;
   }
@@ -1071,9 +561,7 @@ function openAddCreativeModal() {
   const campaignSelect = document.getElementById('ac-campaign');
   const campaigns = CAMPAIGNS.length > 0
     ? CAMPAIGNS
-    : ALL_CONTENT.length > 0
-      ? [...new Set(ALL_CONTENT.map(c => c.campaign).filter(c => c && c !== 'Unknown'))]
-      : [];
+    : [...new Set(ALL.map(c => c.campaign).filter(c => c && c !== 'Unknown'))];
   campaignSelect.innerHTML = '<option value="" disabled selected>Select Campaign</option>';
   if (campaigns.length === 0) {
     campaignSelect.innerHTML += '<option value="Cool Fresh">Cool Fresh</option>';
@@ -1081,7 +569,7 @@ function openAddCreativeModal() {
     campaigns.forEach(c => { campaignSelect.innerHTML += `<option value="${c}">${c}</option>`; });
   }
   const orgIdSelect = document.getElementById('ac-original-id');
-  const creativeIds = [...new Set(ALL_CONTENT.map(c => c.id).filter(id => id))];
+  const creativeIds = [...new Set(ALL.map(c => c.id).filter(id => id))];
   orgIdSelect.innerHTML = '<option value="" disabled selected>Select Original Creative ID</option>';
   creativeIds.forEach(id => { orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`; });
 }
