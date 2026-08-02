@@ -127,6 +127,10 @@ async function buildPayload(brandId) {
   organicR.rows.forEach(o => {
     (organicBy[o.creative_id] ||= {})[o.platform] = {
       views: num(o.views), reach: num(o.reach), likes: num(o.likes),
+      // buildOrganicHTML() renders the Facebook box with videoViews /
+      // reactions. Same numbers, FB's own naming — aliased here so the
+      // render layer needs no edit.
+      videoViews: num(o.views), reactions: num(o.likes),
       comments: num(o.comments), shares: num(o.shares), saves: num(o.saves),
       totalInteractions: num(o.total_interactions),
       avgWatchTime: num(o.avg_watch_time),
