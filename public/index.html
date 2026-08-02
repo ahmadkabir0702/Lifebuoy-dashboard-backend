@@ -262,8 +262,12 @@
       <div class="nav-item" onclick="window.location='/logout'">
   <div class="dot" style="background:#dc2626"></div>Sign Out
 </div>
-      <div class="brand">
-        <div class="brand-name" id="brand-name">Sunsilk</div>
+<div class="brand">
+        <select id="brand-switcher" onchange="switchBrand(this.value)"
+                style="width:100%;background:transparent;border:1px solid rgba(128,128,128,0.3);
+                       border-radius:6px;padding:6px 8px;font-size:15px;font-weight:700;
+                       color:inherit;cursor:pointer;">
+        </select>
         <div class="brand-sub">Digital · 2026</div>
       </div>
       <div class="nav-section">Analytics</div>
