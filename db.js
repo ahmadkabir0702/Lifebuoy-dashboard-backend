@@ -1,0 +1,63 @@
+// =====================================================================
+//  db.js — Postgres connection for Campaign Lens
+//
+//  Replaces the Google Sheets backend. Uses the Supabase transaction
+//  pooler, so keep the pool small: the pooler multiplexes for us and a
+//  large client-side pool just wastes slots.
+// =====================================================================
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // Supabase terminates TLS at the pooler with a cert that Node does not
+  // trust by default. Traffic is still encrypted.
+  ssl: { rejectUnauthorized: false },
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
+
+pool.on('error', (err) => {
+  console.error('[db] idle client error:', err.message);
+});
+
+async function query(text, params) {
+  const start = Date.now();
+  try {
+    const res = await pool.query(text, params);
+    const ms = Date.now() - start;
+    if (ms > 2000) console.warn(`[db] slow query ${ms}ms:`, text.slice(0, 80));
+    return res;
+  } catch (err) {
+    console.error('[db] query failed:', err.message, '|', text.slice(0, 120));
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------
+//  Brand access. Every data query MUST be scoped by this. The service
+//  role bypasses RLS, so this is the only thing preventing one client
+//  from seeing another's data.
+// ---------------------------------------------------------------------
+async function brandsForUser(username) {
+  const { rows } = await query(
+    `select brands, is_internal from v_user_access
+      where username = $1 and is_active = true`,
+    [username]
+  );
+  if (!rows.length) return null;
+  return { brands: rows[0].brands || [], isInternal: rows[0].is_internal };
+}
+
+// Throws rather than returning empty, so a missing check is a loud
+// failure instead of a silent empty dashboard.
+function assertBrandAllowed(session, brandId) {
+  if (!session || !session.brands) throw new Error('No brand access on session');
+  if (!brandId) throw new Error('brand_id is required');
+  if (!session.brands.includes(brandId)) {
+    throw new Error(`Access denied for brand: ${brandId}`);
+  }
+  return brandId;
+}
+
+module.exports = { pool, query, brandsForUser, assertBrandAllowed };
