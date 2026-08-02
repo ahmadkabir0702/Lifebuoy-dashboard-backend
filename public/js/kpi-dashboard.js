@@ -36,7 +36,7 @@ const kpi = {
     const vals = arr.map(d => this.safeNum(d[key])).filter(n => n > 0);
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
   },
-  fmtMoney(n) { if (!n) return '$0'; if (n>=1e6) return '$'+(n/1e6).toFixed(2)+'M'; if (n>=1e3) return '$'+(n/1e3).toFixed(1)+'K'; return '$'+n.toFixed(2); },
+  fmtMoney(n) { if (!n) return '$0'; if (n>=1e6) return 'Rs'+(n/1e6).toFixed(2)+'M'; if (n>=1e3) return 'Rs'+(n/1e3).toFixed(1)+'K'; return 'Rs'+n.toFixed(2); },
   fmtNum(n)   { if (!n) return '0'; if (n>=1e6) return (n/1e6).toFixed(1)+'M'; if (n>=1e3) return (n/1e3).toFixed(0)+'K'; return String(Math.round(n)); },
   pct(v)      { return (v||0).toFixed(1)+'%'; },
 };
