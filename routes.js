@@ -96,6 +96,16 @@ app.get('/api/brands', async (req, res) => {
     }
   });
 
+  app.post('/api/switch-brand', (req, res) => {
+    try {
+      const brand = assertBrandAllowed(req.session, req.body.brand_id);
+      req.session.activeBrand = brand;
+      req.session.save(() => res.json({ success: true, active: brand }));
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
+
   // -------------------------------------------------------------------
   //  DASHBOARD DATA — same 11-array shape the frontend already parses
   // -------------------------------------------------------------------
