@@ -69,7 +69,12 @@ async function loadData() {
 
     if (ALL.length === 0) {
       document.getElementById('kpi-row').innerHTML =
-        `<div style="grid-column:1/-1;padding:20px;color:var(--c-avg)">No creatives found.</div>`;
+        `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">No creatives added for ${BRAND_NAME} yet. Use Add Creative to enter one.</div>`;
+      // Clear the previous brand's cards — returning early used to leave
+      // them on screen next to a message saying there were none.
+      document.getElementById('card-grid').innerHTML = '';
+      document.getElementById('grid-count').textContent = '0 creatives';
+      populateFilters();
       return;
     }
     populateFilters();
