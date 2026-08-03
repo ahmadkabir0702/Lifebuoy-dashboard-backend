@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · Campaign Lens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#000050;
+  --ink-900:#1A1A4F;
+  --ink-600:#4A4A75;
+  --ink-400:#6B6B90;
+  --line:#DCDCE6;
+  --white:#FFFFFF;
+  --art-bg:#F1EEE9;
+  --neg:#A32040;
+  --neg-bg:#FBEEF1;
+  --r:6px;
+  --font:'Rubik',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --ease:cubic-bezier(.2,0,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font:400 15px/22px var(--font);color:var(--ink-900);background:var(--white);-webkit-font-smoothing:antialiased}
+
+.auth{display:grid;grid-template-columns:58fr 42fr;min-height:100vh}
+
+/* ---------- left: brand artwork, full bleed ----------
+   Swap /img/login-art.jpg for your own file. object-position
+   controls which part survives the crop on wide screens.      */
+.art{position:relative;background:var(--art-bg);overflow:hidden}
+.art img{
+  width:100%;height:100%;
+  object-fit:cover;
+  object-position:center center;
+  display:block;
+}
+
+/* ---------- right: white, centred, generous ---------- */
+.side{display:flex;align-items:center;justify-content:center;padding:48px 40px;background:var(--white)}
+.col{width:100%;max-width:352px;text-align:center}
+
+/* ---------- logo ----------
+   Height is the only thing you set; width follows the aspect ratio. */
+.logo{margin-bottom:56px;display:flex;justify-content:center}
+.logo img{height:30px;width:auto;display:block}
+
+h1{font:400 26px/34px var(--font);color:var(--ink-900);margin-bottom:8px}
+.sub{font-size:15px;line-height:22px;color:var(--ink-600);margin-bottom:28px}
+
+.err{
+  display:block;background:var(--neg-bg);color:var(--neg);border-radius:var(--r);
+  padding:10px 14px;font-size:14px;line-height:20px;margin-bottom:20px;text-align:left;
+}
+
+.field{text-align:left;margin-bottom:16px}
+label{display:block;font-size:14px;line-height:20px;color:var(--ink-600);margin-bottom:6px}
+input{
+  width:100%;height:46px;padding:0 14px;
+  background:var(--white);border:1px solid var(--line);border-radius:var(--r);
+  font:400 15px/46px var(--font);color:var(--ink-900);
+  transition:border-color .15s var(--ease);
+}
+input::placeholder{color:#A0A0BB}
+input:hover{border-color:#C2C2D2}
+input:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(0,0,80,.10)}
+
+.btn{
+  width:100%;height:50px;margin-top:12px;
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--white);border:1px solid var(--navy);border-radius:var(--r);
+  font:500 15px/1 var(--font);color:var(--ink-900);cursor:pointer;
+  transition:background .15s var(--ease);
+}
+.btn:hover{background:#F4F4F8}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(0,0,80,.18)}
+.btn svg{width:17px;height:17px;flex:none}
+
+.legal{margin-top:22px;font-size:13px;line-height:20px;color:var(--ink-600)}
+.legal strong{font-weight:500;color:var(--ink-900)}
+
+.access{
+  margin-top:56px;padding-top:24px;border-top:1px solid #EDEDF2;
+  font-size:14px;line-height:22px;color:var(--ink-600);
+}
+.access a{color:var(--ink-900);text-decoration:none;border-bottom:1px solid var(--line)}
+.access a:hover{border-bottom-color:var(--ink-400)}
+
+@media (max-width:900px){
+  .auth{grid-template-columns:1fr}
+  .art{height:210px}
+  .side{padding:40px 24px 56px}
+  .logo{margin-bottom:36px}
+  .access{margin-top:40px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="auth">
+
+  <div class="art">
+    <img src="/img/login-art.jpg" alt="">
+  </div>
+
+  <div class="side">
+    <div class="col">
+
+      <div class="logo">
+        <img src="/img/wpp-logo.svg" alt="WPP Media">
+      </div>
+
+      <h1>Sign in</h1>
+      <p class="sub">Campaign Lens · Unilever</p>
+
+      <!-- ERROR_BLOCK -->
+
+      <form method="POST" action="/login">
+        <div class="field">
+          <label for="username">Username</label>
+          <input id="username" type="text" name="username" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn" type="submit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>
+          </svg>
+          Sign in
+        </button>
+      </form>
+
+      <p class="legal">By clicking <strong>'Sign in'</strong>, you acknowledge that information may be stored or retrieved on your browser, primarily through the use of cookies.</p>
+
+      <p class="access">
+        Accounts are created by the WPP Media team. To request access or reset a
+        password, email <a href="mailto:campaignlens@wppmedia.com">campaignlens@wppmedia.com</a>.
+      </p>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
