@@ -252,9 +252,12 @@
              <div id="ac-progress-text" style="font-size: 12px; color: #4338ca;">Starting...</div>
          </div>
 
+        <div id="ac-summary" style="display:none; margin-top:15px;"></div>
            <div class="modal-actions" style="margin-top: 15px;">
              <button type="button" id="ac-cancel-btn" class="modal-btn modal-cancel" onclick="closeAddCreativeModal()">Cancel</button>
              <button type="submit" id="ac-confirm-btn" class="modal-btn modal-confirm">Add creative</button>
+             <button type="button" id="ac-regen-btn" class="modal-btn" style="display:none" onclick="regenerateDescription()">Retry analysis</button>
+             <button type="button" id="ac-done-btn" class="modal-btn modal-confirm" style="display:none" onclick="closeAddCreativeModal(); location.reload();">Done</button>
            </div>
        </form>
     </div>
