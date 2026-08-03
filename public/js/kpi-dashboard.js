@@ -78,9 +78,10 @@ function applyKpiFilter(key, value) {
   renderSection2(allData, allContent);
   renderSection3(allContent);
   renderSection4(allData);
-  // Update active pill styles
+  // Update active pill styles. Each pill reflects its OWN group's current
+  // value — comparing against the key just clicked would clear every other group.
   document.querySelectorAll('[data-kfi]').forEach(el => {
-    el.classList.toggle('kfi-active', el.dataset.kfv === value && el.dataset.kfk === key);
+    el.classList.toggle('kfi-active', kpiFilters[el.dataset.kfk] === el.dataset.kfv);
   });
 }
 
