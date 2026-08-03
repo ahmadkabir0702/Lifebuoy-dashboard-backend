@@ -721,7 +721,9 @@ async function regenerateDescription() {
     if (result.error) throw new Error(result.error);
     showCreativeSummary(result);
   } catch (err) {
-    alert('Analysis failed again: ' + err.message);
+    // yt-dlp writes warnings to stderr; the real cause is the last line.
+    const lines = String(err.message).split('\n').filter(l => l.trim() && !/^\s*(WARNING|It is strongly|Run "yt-dlp|To suppress|Pre-merged|To prioritize)/.test(l));
+    alert('Analysis failed: ' + (lines.pop() || err.message).trim());
   } finally {
     btn.innerText = orig; btn.disabled = false;
   }
