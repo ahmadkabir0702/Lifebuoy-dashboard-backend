@@ -154,28 +154,6 @@ function renderKPIShell(page) {
     <style>
       #page-kpi { padding: 20px; }
 
-      /* Filter bar */
-      #kpi-filters-bar {
-        background: var(--c-surface); border: 1px solid var(--c-border);
-        border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;
-        display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;
-      }
-      .kfi-group { display: flex; flex-direction: column; gap: 6px; }
-      .kfi-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: .07em; color: var(--c-muted); }
-      .kfi-pills { display: flex; gap: 5px; flex-wrap: wrap; }
-      .kfi-pill {
-        padding: 4px 10px; border-radius: 999px; border: 1px solid var(--c-border);
-        background: var(--c-bg); color: var(--c-muted); font-size: 11px;
-        font-weight: 500; cursor: pointer; font-family: inherit;
-        transition: all .15s;
-      }
-      .kfi-pill:hover { border-color: var(--c-accent); color: var(--c-accent); }
-      .kfi-pill.kfi-active {
-        background: var(--c-accent); color: #fff; border-color: var(--c-accent);
-        font-weight: 700;
-      }
-
       /* Section titles */
       .kpi-section-title {
         font-size: 11px; font-weight: 700; letter-spacing: .1em;
@@ -260,12 +238,9 @@ function renderKPIShell(page) {
         .kpi-stat-row.cols-5, .kpi-stat-row.cols-4 { grid-template-columns: 1fr 1fr; }
         .kpi-chart-row.cols-2 { grid-template-columns: 1fr; }
         .dur-grid { grid-template-columns: 1fr; }
-        #kpi-filters-bar { gap: 14px; }
       }
     </style>
 
-    <!-- Filters -->
-    <div id="kpi-filters-bar"></div>
 
     <!-- S1 -->
     <div class="kpi-section-title">Executive Summary</div>
