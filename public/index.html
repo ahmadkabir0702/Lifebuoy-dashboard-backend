@@ -244,12 +244,12 @@
            <input type="text" id="ac-fb" class="modal-input" style="margin-bottom:10px;" placeholder="FB Link">
            <input type="text" id="ac-tt" class="modal-input" style="margin-bottom:10px;" placeholder="TikTok Link">
            
-         <div id="ac-progress-container" style="display:none; margin-top: 15px; padding: 15px; background: #eef2ff; border-radius: 6px; border: 1px solid #c7d2fe;">
-             <div style="font-weight: bold; color: #4f46e5; margin-bottom: 8px; font-size: 13px;">Processing Creative</div>
-             <div style="background: #e0e7ff; border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 8px;">
-                 <div id="ac-progress-bar" style="height: 8px; width: 0%; border-radius: 6px; background: #4f46e5; transition: width 0.6s ease, background 0.3s;"></div>
+         <div id="ac-progress-container" style="display:none; margin-top: 15px; padding: 15px; background: #F4F6F8; border-radius: 6px; border: 1px solid #DCDCE6;">
+             <div style="font-weight: bold; color: #000050; margin-bottom: 8px; font-size: 13px;">Processing Creative</div>
+             <div style="background: #EAEFF3; border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 8px;">
+                 <div id="ac-progress-bar" style="height: 8px; width: 0%; border-radius: 6px; background: #000050; transition: width 0.6s ease, background 0.3s;"></div>
              </div>
-             <div id="ac-progress-text" style="font-size: 12px; color: #4338ca;">Starting...</div>
+             <div id="ac-progress-text" style="font-size: 12px; color: #4A4A75;">Starting...</div>
          </div>
 
         <div id="ac-summary" style="display:none; margin-top:15px;"></div>
@@ -265,67 +265,102 @@
 
   
 <div class="app">
-    <div class="masthead">
-      <div class="masthead-left">
-        <div class="masthead-mark">WPP Media</div>
-        <div class="masthead-product">Campaign Lens</div>
-      </div>
-      <div class="masthead-right">
-        <button class="masthead-signout" onclick="window.location='/logout'">Sign out</button>
-      </div>
-    </div>
-  <div class="shell">
-    <div class="sidebar">
-<div class="brand">
-        <select id="brand-switcher" onchange="switchBrand(this.value)">
-        </select>
-        <div class="brand-sub">Digital · 2026</div>
-      </div>
-      <div class="nav-section">Analytics</div>
-      <div class="nav-item active" onclick="setNav('creatives',this)"><div class="dot" style="background:var(--c-accent)"></div>Creative Hub</div>
-    <div class="nav-section">Reporting</div>
-      <div class="nav-item" onclick="setNav('kpi',this)"><div class="dot" style="background:#10b981"></div>Campaign KPIs</div>
-      
-      <div class="nav-section">Actions</div>
-      <div class="nav-item" onclick="openAddCreativeModal()"><div class="dot" style="background:#3b82f6"></div>Add Creative</div>
-      <div class="nav-item" onclick="openPretestModal()"><div class="dot" style="background:#8b5cf6"></div>Pre-test Asset</div>
+
+  <!-- ── Top bar: product, sections, brand, actions ────────────────── -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <img src="/img/wpp-logo.svg" alt="WPP">
+      <span class="topbar-product">Campaign Lens</span>
     </div>
 
+    <div class="nav-tabs">
+      <div class="nav-item active" onclick="setNav('creatives',this)">Creative Hub</div>
+      <div class="nav-item" onclick="setNav('kpi',this)">Campaign KPIs</div>
+    </div>
+
+    <div class="topbar-right">
+      <select id="brand-switcher" onchange="switchBrand(this.value)"></select>
+      <button class="btn-outline" onclick="openAddCreativeModal()">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add creative
+      </button>
+      <button class="btn-outline primary" onclick="openPretestModal()">Pre-test asset</button>
+      <button class="masthead-signout" onclick="window.location='/logout'">Sign out</button>
+    </div>
+  </div>
+
+  <div class="shell">
     <div class="main">
-      <div class="topbar">
-        <div class="topbar-title" id="topbar-title">Creative Hub</div>
-        <div class="filters">
-          <input type="text" id="search-filter" class="search-input" placeholder="Search ID or Name..." onkeyup="render()">
+      <div class="content">
+
+        <!-- ── Page head: title, search, platform, filters ─────────── -->
+        <div class="page-head">
+          <h1 id="topbar-title">Creative Hub</h1>
+          <div class="spacer"></div>
+
+          <input type="text" id="search-filter" class="search-input"
+                 placeholder="Search ID or name" onkeyup="render()">
+
           <div class="platform-toggle">
             <div class="pt active" id="pt-both" onclick="setPlatform('both',this)">All</div>
             <div class="pt" id="pt-meta" onclick="setPlatform('meta',this)">Meta</div>
             <div class="pt" id="pt-tt" onclick="setPlatform('tiktok',this)">TikTok</div>
           </div>
-          <select id="campaign-filter" onchange="render()"><option value="all">All campaigns</option></select>
-          <select id="month-filter" onchange="render()"><option value="all">All months</option></select>
-          <select id="content-type-filter" onchange="render()"><option value="all">All content types</option></select>
-          <select id="validation-filter" onchange="render()">
-            <option value="all">All validation</option>
-            <option value="validated">Validated</option>
-            <option value="not_validated">Not Validated</option>
-          </select>
-          <select id="action-filter" onchange="render()">
-            <option value="all">All action status</option>
-            <option value="actioned">Actioned</option>
-            <option value="not_actioned">Not Actioned</option>
-          </select>
-         <select id="status-filter" onchange="render()">
-            <option value="all">All Ad Status</option>
-            <option value="ACTIVE">Active Ads</option>
-            <option value="STOPPED">Stopped Ads</option>
-            <option value="BOOSTED">Boosted (Any Spend)</option>
-            <option value="NOT_BOOSTED">Not Boosted</option>
-            <option value="VALIDATED_NOT_BOOSTED">Validated (Not Boosted)</option>
-          </select>
-        </div>
-      </div>
 
-      <div class="content">
+          <div class="filters-wrap">
+            <button class="filters-btn" id="filters-btn" onclick="toggleFilters(event)">
+              <svg viewBox="0 0 24 24"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+              Filters <span class="filters-count" id="filters-count"></span>
+            </button>
+
+            <div class="filters" id="filters-panel">
+              <div>
+                <label for="campaign-filter">Campaign</label>
+                <select id="campaign-filter" onchange="render()"><option value="all">All campaigns</option></select>
+              </div>
+              <div>
+                <label for="month-filter">Month</label>
+                <select id="month-filter" onchange="render()"><option value="all">All months</option></select>
+              </div>
+              <div>
+                <label for="content-type-filter">Content type</label>
+                <select id="content-type-filter" onchange="render()"><option value="all">All content types</option></select>
+              </div>
+              <div>
+                <label for="validation-filter">Validation</label>
+                <select id="validation-filter" onchange="render()">
+                  <option value="all">All validation</option>
+                  <option value="validated">Validated</option>
+                  <option value="not_validated">Not validated</option>
+                </select>
+              </div>
+              <div>
+                <label for="action-filter">Action status</label>
+                <select id="action-filter" onchange="render()">
+                  <option value="all">All action status</option>
+                  <option value="actioned">Actioned</option>
+                  <option value="not_actioned">Not actioned</option>
+                </select>
+              </div>
+              <div>
+                <label for="status-filter">Ad status</label>
+                <select id="status-filter" onchange="render()">
+                  <option value="all">All ad status</option>
+                  <option value="ACTIVE">Active ads</option>
+                  <option value="STOPPED">Stopped ads</option>
+                  <option value="BOOSTED">Boosted (any spend)</option>
+                  <option value="NOT_BOOSTED">Not boosted</option>
+                  <option value="VALIDATED_NOT_BOOSTED">Validated (not boosted)</option>
+                </select>
+              </div>
+              <div class="filters-foot">
+                <button class="modal-btn" onclick="clearFilters()">Clear all</button>
+                <button class="modal-btn modal-confirm" onclick="closeFilters()">Done</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-pills" id="filter-pills"></div>
         <div id="creativeModalOverlay" class="creative-modal-overlay" onclick="closeCreativeModal(event)">
             <div class="creative-modal" id="creativeModalContent"></div>
         </div>
@@ -357,6 +392,52 @@
   </div>
   </div>
 
+  
+<script>
+/* Filter panel + active-filter pills. Self-contained: does not touch dashboard.js. */
+const FILTER_LABELS = {
+  'campaign-filter':'Campaign', 'month-filter':'Month',
+  'content-type-filter':'Content type', 'validation-filter':'Validation',
+  'action-filter':'Action status', 'status-filter':'Ad status'
+};
+function toggleFilters(e){ e.stopPropagation(); document.getElementById('filters-panel').classList.toggle('open'); }
+function closeFilters(){ document.getElementById('filters-panel').classList.remove('open'); }
+document.addEventListener('click', e => {
+  const w = document.querySelector('.filters-wrap');
+  if (w && !w.contains(e.target)) closeFilters();
+});
+function activeFilters(){
+  return Object.keys(FILTER_LABELS)
+    .map(id => ({ id, el: document.getElementById(id) }))
+    .filter(f => f.el && f.el.value && f.el.value !== 'all');
+}
+function syncFilterPills(){
+  const act = activeFilters();
+  const badge = document.getElementById('filters-count');
+  if (badge) badge.textContent = act.length ? act.length : '';
+  const box = document.getElementById('filter-pills');
+  if (!box) return;
+  box.innerHTML = act.map(f => {
+    const txt = f.el.options[f.el.selectedIndex].text;
+    return `<span class="filter-pill"><b>${FILTER_LABELS[f.id]}</b> ${txt}` +
+           `<span onclick="removeFilter('${f.id}')">&times;</span></span>`;
+  }).join('') + (act.length > 1 ? '<button class="filter-clear" onclick="clearFilters()">Clear all</button>' : '');
+}
+function removeFilter(id){
+  const el = document.getElementById(id);
+  if (el){ el.value = 'all'; }
+  if (typeof render === 'function') render();
+  syncFilterPills();
+}
+function clearFilters(){
+  Object.keys(FILTER_LABELS).forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
+  if (typeof render === 'function') render();
+  syncFilterPills();
+  closeFilters();
+}
+document.addEventListener('change', e => { if (e.target.closest('#filters-panel')) syncFilterPills(); });
+window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
+</script>
   <script src="/js/dashboard.js"></script>
   <script src="/js/kpi-dashboard.js"></script>
   <script src="/js/pretest.js"></script>
