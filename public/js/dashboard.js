@@ -655,6 +655,67 @@ function toggleOriginalIdField() {
   }
 }
 
+let LAST_CREATIVE_ID = null;
+
+function showCreativeSummary(result) {
+  LAST_CREATIVE_ID = result.creativeId;
+  const a = result.analysis || {};
+  const segs = (a.segments || []).filter(Boolean);
+  const labels = ['0–25%', '25–50%', '50–75%', '75–100%'];
+  const failed = !a.hook && segs.length === 0;
+
+  document.getElementById('ac-progress-container').style.display = 'none';
+  document.getElementById('ac-confirm-btn').style.display = 'none';
+  document.getElementById('ac-cancel-btn').style.display = 'none';
+  document.getElementById('ac-done-btn').style.display = 'inline-flex';
+  document.getElementById('ac-regen-btn').style.display = failed ? 'inline-flex' : 'none';
+
+  const box = document.getElementById('ac-summary');
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="brief-hook" style="margin-bottom:12px">
+      <span class="brief-hook-label">Creative ID</span>
+      <div class="brief-hook-text" style="font-family:var(--font-mono);font-size:13px">${result.creativeId}</div>
+      <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin-top:6px">
+        Add this after the pipe in the ad name when the asset is boosted.
+      </div>
+    </div>
+    ${a.duration ? `<div class="organic-stat-row"><span class="organic-stat-label">Duration</span><span class="organic-stat-val">${a.duration}s</span></div>` : ''}
+    ${failed ? `
+      <div class="warning-badge" style="display:block;margin-top:12px">
+        Analysis did not complete
+      </div>
+      <div style="font:400 13px/18px var(--font-ui);color:var(--ink-500);margin-top:8px">
+        The creative is saved. Descriptions can be generated again without re-entering anything.
+      </div>` : `
+      ${a.hook ? `<div class="brief-hook" style="margin-top:12px"><span class="brief-hook-label">Hook</span><div class="brief-hook-text">${a.hook}</div></div>` : ''}
+      ${segs.length ? `<div class="brief-segs" style="margin-top:12px">${
+        segs.map((s,i)=>`<div class="seg-row"><div class="seg-label">${labels[i]||''}</div><div class="seg-text">${s}</div></div>`).join('')
+      }</div>` : ''}`}
+  `;
+}
+
+async function regenerateDescription() {
+  const btn = document.getElementById('ac-regen-btn');
+  const orig = btn.innerText;
+  btn.innerText = 'Analysing...'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/regenerate-description', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creative_id: LAST_CREATIVE_ID }),
+      signal: AbortSignal.timeout(120000)
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    showCreativeSummary(result);
+  } catch (err) {
+    alert('Analysis failed again: ' + err.message);
+  } finally {
+    btn.innerText = orig; btn.disabled = false;
+  }
+}
+
 async function submitCreative(e) {
   e.preventDefault();
   const campaign = document.getElementById('ac-campaign').value;
@@ -701,14 +762,14 @@ async function submitCreative(e) {
 
     const result = await res.json();
     if (result.success) {
-    const aiMsg = result.aiPending ? ' AI descriptions generated.' : '';
-      setProgress(100, `Creative ${result.creativeId} added.` + aiMsg, '#16a34a');
-      progressBar.style.background = '#16a34a';
-      setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 3000);
+      setProgress(100, 'Saved.', '#16a34a');
+      showCreativeSummary(result);
     } else {
       setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#dc2626');
       progressBar.style.background = '#dc2626';
-      resetSubmitUI(3000);
+      // The row may already exist even when the analysis failed.
+      if (result.creativeId) showCreativeSummary(result);
+      else resetSubmitUI(3000);
     }
   } catch (err) {
     console.error(err);
