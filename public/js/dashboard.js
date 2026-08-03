@@ -689,7 +689,7 @@ async function submitCreative(e) {
     const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#4f46e5'), 800);
     const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#4f46e5'), 4000);
     const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#4f46e5'), 15000);
-    const t4 = setTimeout(() => setProgress(90, 'Saving...', '#4f46e5'), 35000);
+    const t4 = setTimeout(() => setProgress(90, 'Saving to database...', '#4f46e5'), 35000);
 
     const res = await fetch('/api/add-creative', {
       method: 'POST',
@@ -701,8 +701,8 @@ async function submitCreative(e) {
 
     const result = await res.json();
     if (result.success) {
-      const aiMsg = result.aiPending ? ' AI descriptions are being generated in the background — check the sheet in ~1 minute.' : '';
-      setProgress(100, 'Row added to sheet!' + aiMsg, '#16a34a');
+    const aiMsg = result.aiPending ? ' AI descriptions generated.' : '';
+      setProgress(100, `Creative ${result.creativeId} added.` + aiMsg, '#16a34a');
       progressBar.style.background = '#16a34a';
       setTimeout(() => { closeAddCreativeModal(); location.reload(); }, 3000);
     } else {
