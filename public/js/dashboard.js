@@ -123,6 +123,12 @@ function setNav(page, element) {
         const navLink = document.querySelector(`[onclick="setNav('${page}',this)"]`);
         if (navLink) navLink.classList.add('active');
     }
+    currentPage = page;
+    // The KPI tab owns its own filter state, so the Creative Hub filter
+    // row does nothing there. Hiding it removes two competing filter
+    // systems from the same screen.
+    const topFilters = document.querySelector('.topbar .filters');
+    if (topFilters) topFilters.style.display = (page === 'kpi') ? 'none' : 'flex';
     if (page === 'kpi' && typeof renderKPIDashboard === 'function') {
         renderKPIDashboard();
     }
