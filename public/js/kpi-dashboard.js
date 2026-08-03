@@ -19,16 +19,16 @@ const kpi = {
   isDark: () => false,
   colors() {
     return {
-      grid:  '#E6E8F0',   // line-200
-      tick:  '#6B7196',   // ink-400
-      text:  '#545A85',   // ink-500
+      grid:  '#DCDCE6',   // line-200
+      tick:  '#6B6B90',   // ink-400
+      text:  '#5A5A85',   // ink-500
       navy:  '#000050',
-      violet:'#31117C',
-      violet400:'#6E5BD6',
-      aqua:  '#2BFFC1',
-      aquaDeep:'#00A47C',
-      neutral:'#8C93B8',
-      crimson:'#B02748'
+      violet:'#000050',
+      violet400:'#5A5A9E',
+      aqua:  '#000050',
+      aquaDeep:'#04785C',
+      neutral:'#8A8ABF',
+      crimson:'#A32040'
     };
   },
 
@@ -157,7 +157,7 @@ function renderKPIShell(page) {
       /* Filter bar */
       #kpi-filters-bar {
         background: var(--c-surface); border: 1px solid var(--c-border);
-        border-radius: 10px; padding: 14px 16px; margin-bottom: 20px;
+        border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;
         display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;
       }
       .kfi-group { display: flex; flex-direction: column; gap: 6px; }
@@ -165,7 +165,7 @@ function renderKPIShell(page) {
         letter-spacing: .07em; color: var(--c-muted); }
       .kfi-pills { display: flex; gap: 5px; flex-wrap: wrap; }
       .kfi-pill {
-        padding: 4px 10px; border-radius: 20px; border: 1px solid var(--c-border);
+        padding: 4px 10px; border-radius: 999px; border: 1px solid var(--c-border);
         background: var(--c-bg); color: var(--c-muted); font-size: 11px;
         font-weight: 500; cursor: pointer; font-family: inherit;
         transition: all .15s;
@@ -190,7 +190,7 @@ function renderKPIShell(page) {
       .kpi-stat-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
 
       .ks { background: var(--c-surface); border: 1px solid var(--c-border);
-        border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden; }
+        border-radius: 8px; padding: 14px 16px; position: relative; overflow: hidden; }
       .ks::before { content: ''; position: absolute; top: 0; left: 0; right: 0;
         height: 3px; background: var(--kpi-accent, var(--c-accent)); }
       .ks-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -205,7 +205,7 @@ function renderKPIShell(page) {
       .kpi-chart-row.cols-2 { grid-template-columns: 1fr 1fr; }
       .kpi-chart-row.cols-1 { grid-template-columns: 1fr; }
 
-      .kc { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 10px; padding: 16px; }
+      .kc { background: var(--c-surface); border: 1px solid var(--c-border); border-radius: 8px; padding: 16px; }
       .kc-title { font-size: 12px; font-weight: 700; margin-bottom: 12px; color: var(--c-text); display: flex; align-items: center; gap: 6px; }
       .kc-title .kc-badge { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; background: var(--c-border); color: var(--c-muted); }
       .kc-wrap { position: relative; height: 220px; }
@@ -219,15 +219,15 @@ function renderKPIShell(page) {
       .creator-leaderboard tr:hover td { background: rgba(37,99,235,.03); }
       .creator-leaderboard tr:last-child td { border-bottom: none; }
       .cl-rank { font-size: 12px; font-weight: 800; color: var(--c-muted); }
-      .cl-rank.gold { color: #f59e0b; } .cl-rank.silver { color: #9ca3af; } .cl-rank.bronze { color: #b45309; }
+      .cl-rank.gold { color: #8A5A12; } .cl-rank.silver { color: #A0A0BB; } .cl-rank.bronze { color: #8A5A12; }
       .cl-name { font-weight: 700; font-size: 12px; }
       .cl-name a { color: var(--c-accent); text-decoration: none; }
       .cl-name a:hover { text-decoration: underline; }
       .cl-platform-pills { display: flex; gap: 4px; flex-wrap: wrap; }
       .cl-pill { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 3px; }
-      .cl-pill.ig { background: #fce7f3; color: #9d174d; }
-      .cl-pill.tt { background: #fef2f2; color: #991b1b; }
-      .cl-pill.fb { background: #eff6ff; color: #1e40af; }
+      .cl-pill.ig { background: #FBEEF1; color: #A32040; }
+      .cl-pill.tt { background: #FBEEF1; color: #A32040; }
+      .cl-pill.fb { background: #F4F6F8; color: #000050; }
       .cl-bar-wrap { display: flex; align-items: center; gap: 6px; }
       .cl-bar-track { flex: 1; height: 6px; background: var(--c-border); border-radius: 3px; overflow: hidden; }
       .cl-bar-fill { height: 6px; border-radius: 3px; }
@@ -355,7 +355,7 @@ function renderSection1(accOverview, allData, allContent) {
   const spendPct = kpiSpend ? Math.min(100, totalSpend/kpiSpend*100) : null;
   const reachPct = kpiReach ? Math.min(100, totalReach/kpiReach*100) : null;
   const imprPct  = kpiImpr  ? Math.min(100, totalImpr /kpiImpr *100) : null;
-  const budgetColor = spendPct===null ? '#6b7280' : spendPct>90 ? '#dc2626' : spendPct>70 ? '#d97706' : '#16a34a';
+  const budgetColor = spendPct===null ? '#6B6B90' : spendPct>90 ? '#A32040' : spendPct>70 ? '#8A5A12' : '#04785C';
 
   const card = (label, actual, target, pct, fmt, accent) => `
     <div class="ks" style="--kpi-accent:${accent}">
@@ -369,12 +369,12 @@ function renderSection1(accOverview, allData, allContent) {
 
   document.getElementById('kpi-s1-budget').innerHTML =
     card('Budget Spend', totalSpend, kpiSpend, spendPct, kpi.fmtMoney, budgetColor) +
-    card('Reach',        totalReach, kpiReach, reachPct, kpi.fmtNum,   '#7c3aed') +
-    card('Impressions',  totalImpr,  kpiImpr,  imprPct,  kpi.fmtNum,   '#0891b2') +
-    card('Frequency', parseFloat(frequency)||0, kpi.safeNum(actRow.kpiFrequency)||null, kpi.safeNum(actRow.kpiFrequency) ? Math.min(100, (parseFloat(frequency)||0) / kpi.safeNum(actRow.kpiFrequency) * 100) : null, v=>(v||0).toFixed(2)+'x', '#f59e0b') +
-    `<div class="ks" style="--kpi-accent:#16a34a">
+    card('Reach',        totalReach, kpiReach, reachPct, kpi.fmtNum,   '#000050') +
+    card('Impressions',  totalImpr,  kpiImpr,  imprPct,  kpi.fmtNum,   '#5A5A9E') +
+    card('Frequency', parseFloat(frequency)||0, kpi.safeNum(actRow.kpiFrequency)||null, kpi.safeNum(actRow.kpiFrequency) ? Math.min(100, (parseFloat(frequency)||0) / kpi.safeNum(actRow.kpiFrequency) * 100) : null, v=>(v||0).toFixed(2)+'x', '#8A5A12') +
+    `<div class="ks" style="--kpi-accent:#04785C">
       <div class="ks-label">Active Assets</div>
-      <div class="ks-val" style="color:#16a34a">${allData.filter(d=>d.adStatus==='ACTIVE').length}</div>
+      <div class="ks-val" style="color:#04785C">${allData.filter(d=>d.adStatus==='ACTIVE').length}</div>
       <div class="ks-sub">of ${allData.length} in filter</div>
     </div>`;
 }
@@ -388,22 +388,22 @@ function renderSection2(allData, allContent) {
   const repAssets  = allContent.filter(d=>d.isRepurposed).length;
 
   document.getElementById('kpi-s2-pipeline').innerHTML = `
-    <div class="ks" style="--kpi-accent:#7c3aed">
+    <div class="ks" style="--kpi-accent:#000050">
       <div class="ks-label">Brand Say Assets</div>
-      <div class="ks-val" style="color:#7c3aed">${bsCount}</div>
+      <div class="ks-val" style="color:#000050">${bsCount}</div>
       <div class="ks-sub">${allContent.length?Math.round(bsCount/allContent.length*100):0}% of pipeline</div>
     </div>
-    <div class="ks" style="--kpi-accent:#0891b2">
+    <div class="ks" style="--kpi-accent:#5A5A9E">
       <div class="ks-label">Others Say Assets</div>
-      <div class="ks-val" style="color:#0891b2">${osCount}</div>
+      <div class="ks-val" style="color:#5A5A9E">${osCount}</div>
       <div class="ks-sub">${allContent.length?Math.round(osCount/allContent.length*100):0}% of pipeline</div>
     </div>
-    <div class="ks" style="--kpi-accent:#16a34a">
+    <div class="ks" style="--kpi-accent:#04785C">
       <div class="ks-label">Original Assets</div>
       <div class="ks-val">${origAssets}</div>
       <div class="ks-sub">New content</div>
     </div>
-    <div class="ks" style="--kpi-accent:#d97706">
+    <div class="ks" style="--kpi-accent:#8A5A12">
       <div class="ks-label">Repurposed Assets</div>
       <div class="ks-val">${repAssets}</div>
       <div class="ks-sub">${allContent.length?Math.round(repAssets/allContent.length*100):0}% repurpose rate</div>
@@ -439,13 +439,13 @@ function renderSection2(allData, allContent) {
           <div style="margin-top:6px">
             <div style="font-size:9px;color:var(--c-muted);margin-bottom:4px;font-weight:600">CQR SPLIT</div>
             <div class="cqr-mini-bar" style="width:100%">
-              ${g>0?`<div style="flex:${g};background:#16a34a" title="${g} Good"></div>`:''}
-              ${a>0?`<div style="flex:${a};background:#d97706" title="${a} Avg"></div>`:''}
-              ${p>0?`<div style="flex:${p};background:#dc2626" title="${p} Poor"></div>`:''}
-              ${inv>0?`<div style="flex:${inv};background:#6b7280" title="${inv} Invalid"></div>`:''}
+              ${g>0?`<div style="flex:${g};background:#04785C" title="${g} Good"></div>`:''}
+              ${a>0?`<div style="flex:${a};background:#8A5A12" title="${a} Avg"></div>`:''}
+              ${p>0?`<div style="flex:${p};background:#A32040" title="${p} Poor"></div>`:''}
+              ${inv>0?`<div style="flex:${inv};background:#6B6B90" title="${inv} Invalid"></div>`:''}
             </div>
             <div style="font-size:9px;color:var(--c-muted);margin-top:3px">
-              <span style="color:#16a34a">●${g}G</span> <span style="color:#d97706">●${a}A</span> <span style="color:#dc2626">●${p}P</span>
+              <span style="color:#04785C">●${g}G</span> <span style="color:#8A5A12">●${a}A</span> <span style="color:#A32040">●${p}P</span>
             </div>
           </div>
           <div style="margin-top:6px;display:flex;gap:12px">
@@ -459,14 +459,14 @@ function renderSection2(allData, allContent) {
 
   const bsData = allData.filter(d=>d.type==='Brand Say');
   const osData = allData.filter(d=>d.type==='Others Say');
-  buildDur(bsData,'kpi-dur-bs','#7c3aed');
-  buildDur(osData,'kpi-dur-os','#0891b2');
+  buildDur(bsData,'kpi-dur-bs','#000050');
+  buildDur(osData,'kpi-dur-os','#5A5A9E');
 
   kpi.make('chart-head2head','bar',{
     labels:['Avg Hook Rate','Avg VTR %','Avg Watch Time'],
     datasets:[
-      {label:'Brand Say',  data:[kpi.avg(bsData,'hookRate'),kpi.avg(bsData,'vtr'),kpi.avg(bsData,'watchTime')], backgroundColor:'#7c3aed',borderRadius:5},
-      {label:'Others Say', data:[kpi.avg(osData,'hookRate'),kpi.avg(osData,'vtr'),kpi.avg(osData,'watchTime')], backgroundColor:'#0891b2',borderRadius:5},
+      {label:'Brand Say',  data:[kpi.avg(bsData,'hookRate'),kpi.avg(bsData,'vtr'),kpi.avg(bsData,'watchTime')], backgroundColor:'#000050',borderRadius:0},
+      {label:'Others Say', data:[kpi.avg(osData,'hookRate'),kpi.avg(osData,'vtr'),kpi.avg(osData,'watchTime')], backgroundColor:'#5A5A9E',borderRadius:0},
     ]
   },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{y:{...kpi.scaleDefaults(co),beginAtZero:true},x:{...kpi.scaleDefaults(co)}}});
 
@@ -474,7 +474,7 @@ function renderSection2(allData, allContent) {
   allData.forEach(d=>{if(cqrSpend[d.cqr]!==undefined) cqrSpend[d.cqr]+=(d.spend||0);});
   kpi.make('chart-cqr-donut','doughnut',{
     labels:['Good','Average','Poor','Invalid'],
-    datasets:[{data:[cqrSpend.Good,cqrSpend.Average,cqrSpend.Poor,cqrSpend.Invalid],backgroundColor:['#16a34a','#d97706','#dc2626','#6b7280'],borderWidth:0}]
+    datasets:[{data:[cqrSpend.Good,cqrSpend.Average,cqrSpend.Poor,cqrSpend.Invalid],backgroundColor:['#04785C','#8A5A12','#A32040','#6B6B90'],borderWidth:0}]
   },{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{...kpi.legendDefaults(co),position:'right'},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${kpi.fmtMoney(ctx.raw)}`}}}});
 }
 
@@ -512,20 +512,20 @@ function renderSection3(allContent) {
   kpi.make('chart-synergy','bar',{
     labels:top10.map(c=>c.name.length>18?c.name.slice(0,16)+'…':c.name),
     datasets:[
-      {label:'IG Views',data:top10.map(c=>c.igViews),backgroundColor:'#e1306c',borderRadius:4},
-      {label:'TT Views',data:top10.map(c=>c.ttViews),backgroundColor:'#ff0050',borderRadius:4},
-      {label:'FB Views',data:top10.map(c=>c.fbViews),backgroundColor:'#1877f2',borderRadius:4},
+      {label:'IG Views',data:top10.map(c=>c.igViews),backgroundColor:'#e1306c',borderRadius:0},
+      {label:'TT Views',data:top10.map(c=>c.ttViews),backgroundColor:'#ff0050',borderRadius:0},
+      {label:'FB Views',data:top10.map(c=>c.fbViews),backgroundColor:'#1877f2',borderRadius:0},
     ]
   },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{x:{...kpi.scaleDefaults(co),stacked:true},y:{...kpi.scaleDefaults(co),stacked:true,beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>kpi.fmtNum(v)}}}});
 
   kpi.make('chart-watch-time','bar',{
     labels:top8Watch.map(c=>c.name.length>16?c.name.slice(0,14)+'…':c.name),
-    datasets:[{label:'Avg Watch Time (s)',data:top8Watch.map(c=>parseFloat(c.avgWatch.toFixed(1))),backgroundColor:top8Watch.map((_,i)=>`hsl(${180+i*12},70%,45%)`),borderRadius:5}]
+    datasets:[{label:'Avg Watch Time (s)',data:top8Watch.map(c=>parseFloat(c.avgWatch.toFixed(1))),backgroundColor:top8Watch.map((_,i)=>`hsl(${180+i*12},70%,45%)`),borderRadius:0}]
   },{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>v+'s'}},y:{...kpi.scaleDefaults(co)}}});
 
   kpi.make('chart-hook-masters','bar',{
     labels:top8Hook.map(c=>c.name.length>16?c.name.slice(0,14)+'…':c.name),
-    datasets:[{label:'Avg Hook Rate %',data:top8Hook.map(c=>parseFloat(c.avgHook.toFixed(1))),backgroundColor:top8Hook.map((_,i)=>`hsl(${260+i*8},65%,55%)`),borderRadius:5}]
+    datasets:[{label:'Avg Hook Rate %',data:top8Hook.map(c=>parseFloat(c.avgHook.toFixed(1))),backgroundColor:top8Hook.map((_,i)=>`hsl(${260+i*8},65%,55%)`),borderRadius:0}]
   },{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>v+'%'}},y:{...kpi.scaleDefaults(co)}}});
 
   const maxV = Math.max(...creators.map(c=>c.totalViews),1);
@@ -538,14 +538,14 @@ function renderSection3(allContent) {
         const {Good:g,Average:a,Poor:p}=c.cqr;
         const nameEl = c.profileUrl?`<a href="${c.profileUrl}" target="_blank">${c.name}</a>`:c.name;
         const pills = [c.igViews>0?'<span class="cl-pill ig">IG</span>':'',c.ttViews>0?'<span class="cl-pill tt">TT</span>':'',c.fbViews>0?'<span class="cl-pill fb">FB</span>':''].join('');
-        const hc = c.avgHook>=30?'#16a34a':c.avgHook>=20?'#d97706':'#dc2626';
+        const hc = c.avgHook>=30?'#04785C':c.avgHook>=20?'#8A5A12':'#A32040';
         return `<tr>
           <td class="cl-rank ${rl[i]||''}">${i+1}</td>
           <td class="cl-name">${nameEl}</td>
           <td style="text-align:center;font-weight:700">${c.videos}</td>
-          <td><div class="cl-bar-wrap"><div class="cl-bar-track"><div class="cl-bar-fill" style="width:${Math.round(c.totalViews/maxV*100)}%;background:#7c3aed"></div></div><div class="cl-val">${kpi.fmtNum(c.totalViews)}</div></div></td>
+          <td><div class="cl-bar-wrap"><div class="cl-bar-track"><div class="cl-bar-fill" style="width:${Math.round(c.totalViews/maxV*100)}%;background:#000050"></div></div><div class="cl-val">${kpi.fmtNum(c.totalViews)}</div></div></td>
           <td style="text-align:center;font-weight:700;color:${hc}">${c.avgHook>0?kpi.pct(c.avgHook):'—'}</td>
-          <td>${g+a+p>0?`<div class="cqr-mini-bar">${g>0?`<div style="flex:${g};background:#16a34a"></div>`:''} ${a>0?`<div style="flex:${a};background:#d97706"></div>`:''} ${p>0?`<div style="flex:${p};background:#dc2626"></div>`:''}</div><div style="font-size:9px;color:var(--c-muted);margin-top:2px">${g}G/${a}A/${p}P</div>`:'<span style="color:var(--c-muted);font-size:10px">No paid data</span>'}</td>
+          <td>${g+a+p>0?`<div class="cqr-mini-bar">${g>0?`<div style="flex:${g};background:#04785C"></div>`:''} ${a>0?`<div style="flex:${a};background:#8A5A12"></div>`:''} ${p>0?`<div style="flex:${p};background:#A32040"></div>`:''}</div><div style="font-size:9px;color:var(--c-muted);margin-top:2px">${g}G/${a}A/${p}P</div>`:'<span style="color:var(--c-muted);font-size:10px">No paid data</span>'}</td>
           <td><div class="cl-platform-pills">${pills}</div></td>
         </tr>`;
       }).join('')}</tbody>
@@ -581,16 +581,16 @@ function renderSection4(allData) {
   kpi.make('chart-cost-eff','bar',{
     labels:['CPM by Reach ($)','CPM by Impressions ($)'],
     datasets:[
-      {label:'Meta',  data:[parseFloat(mCPR.toFixed(2)),parseFloat(mCPI.toFixed(2))],backgroundColor:'#1877f2',borderRadius:5},
-      {label:'TikTok',data:[parseFloat(tCPR.toFixed(2)),parseFloat(tCPI.toFixed(2))],backgroundColor:'#ff0050',borderRadius:5},
+      {label:'Meta',  data:[parseFloat(mCPR.toFixed(2)),parseFloat(mCPI.toFixed(2))],backgroundColor:'#1877f2',borderRadius:0},
+      {label:'TikTok',data:[parseFloat(tCPR.toFixed(2)),parseFloat(tCPI.toFixed(2))],backgroundColor:'#ff0050',borderRadius:0},
     ]
   },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{y:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>'Rs'+v.toFixed(2)}},x:{...kpi.scaleDefaults(co)}}});
 
   kpi.make('chart-attention','bar',{
     labels:['Avg Watch Time (s)','Avg VTR %'],
     datasets:[
-      {label:'Meta',  data:[parseFloat(mWatch.toFixed(1)),parseFloat(mVtr.toFixed(1))],backgroundColor:'#1877f2',borderRadius:5},
-      {label:'TikTok',data:[parseFloat(tWatch.toFixed(1)),parseFloat(tVtr.toFixed(1))],backgroundColor:'#ff0050',borderRadius:5},
+      {label:'Meta',  data:[parseFloat(mWatch.toFixed(1)),parseFloat(mVtr.toFixed(1))],backgroundColor:'#1877f2',borderRadius:0},
+      {label:'TikTok',data:[parseFloat(tWatch.toFixed(1)),parseFloat(tVtr.toFixed(1))],backgroundColor:'#ff0050',borderRadius:0},
     ]
   },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{y:{...kpi.scaleDefaults(co),beginAtZero:true},x:{...kpi.scaleDefaults(co)}}});
 
