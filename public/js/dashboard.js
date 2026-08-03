@@ -37,7 +37,10 @@ async function switchBrand(brandId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ brand_id: brandId })
     });
-    if (!res.ok) throw new Error('Switch failed');
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error || `${res.status} ${res.statusText}`);
+    }
     selectedId = null;
     await loadData();
     // Re-render whichever tab is open, so the switch is not lost on tab change
