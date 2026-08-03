@@ -10,18 +10,22 @@
 </head>
 <body>
 
-  <div id="actionModal" class="modal-overlay">
+<div id="actionModal" class="modal-overlay">
     <div class="modal-box">
        <h3 class="modal-title">Mark as Actioned</h3>
-       <p class="modal-desc">Please enter your name and the agency to confirm this action.</p>
-       <input type="text" id="actionNameInput" class="modal-input" style="margin-bottom:10px;" placeholder="Your Full Name">
-       <input type="text" id="actionAgencyInput" class="modal-input" placeholder="Agency Name (e.g., Ogilvy)">
-<div class="modal-actions">
+       <p class="modal-desc">Confirm this recommendation has been actioned.</p>
+       <label class="field-label">Actioned by</label>
+       <div class="field-static" id="actionNameDisplay">—</div>
+       <label class="field-label" for="actionAgencyInput">Agency</label>
+       <select id="actionAgencyInput" class="modal-input">
+         <option value="">Select agency</option>
+       </select>
+       <div class="modal-actions">
          <button class="modal-btn modal-cancel" onclick="closeActionModal()">Cancel</button>
          <button class="modal-btn modal-confirm" id="modalConfirmBtn" onclick="confirmAction()">Confirm</button>
        </div>
-    </div> <!-- This closes modal-box -->
-  </div> <!-- This closes actionModal -->
+    </div>
+  </div>
 
   <!-- ═══════════════════════════════════════════════════════════════════
      PRE-TEST ASSET MODAL
@@ -250,7 +254,7 @@
 
            <div class="modal-actions" style="margin-top: 15px;">
              <button type="button" id="ac-cancel-btn" class="modal-btn modal-cancel" onclick="closeAddCreativeModal()">Cancel</button>
-             <button type="submit" id="ac-confirm-btn" class="modal-btn modal-confirm">Add to Sheet</button>
+             <button type="submit" id="ac-confirm-btn" class="modal-btn modal-confirm">Add creative</button>
            </div>
        </form>
     </div>
