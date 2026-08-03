@@ -268,11 +268,11 @@ function renderKPIShell(page) {
     <div id="kpi-filters-bar"></div>
 
     <!-- S1 -->
-    <div class="kpi-section-title">Section 1 — Executive Summary</div>
+    <div class="kpi-section-title">Executive Summary</div>
     <div class="kpi-stat-row cols-5" id="kpi-s1-budget"></div>
 
     <!-- S2 -->
-    <div class="kpi-section-title">Section 2 — Content Breakdown</div>
+    <div class="kpi-section-title">Content Breakdown</div>
     <div class="kpi-stat-row cols-4" id="kpi-s2-pipeline"></div>
     <div class="kpi-chart-row cols-2">
       <div class="kc">
@@ -296,7 +296,7 @@ function renderKPIShell(page) {
     </div>
 
     <!-- S3 -->
-    <div class="kpi-section-title">Section 3 — Creator Insights</div>
+    <div class="kpi-section-title">Creator Insights</div>
     <div class="kpi-chart-row cols-1">
       <div class="kc">
         <div class="kc-title">Platform Synergy <span class="kc-badge">Views per Creator — IG, TT, FB</span></div>
@@ -321,7 +321,7 @@ function renderKPIShell(page) {
     </div>
 
     <!-- S4 -->
-    <div class="kpi-section-title">Section 4 — Paid Platform Efficiency</div>
+    <div class="kpi-section-title">Paid Platform Efficiency</div>
     <div class="kpi-chart-row cols-2">
       <div class="kc">
         <div class="kc-title">Cost Efficiency <span class="kc-badge">CPM by Reach &amp; Impressions</span></div>
