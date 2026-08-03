@@ -70,26 +70,29 @@ module.exports = function mountRoutes(app, deps = {}) {
   // -------------------------------------------------------------------
   //  Which brands can this user see, and which is active
   // -------------------------------------------------------------------
-  app.get('/api/brands', async (req, res) => {
+app.get('/api/brands', async (req, res) => {
     try {
-      const { rows } = await query(
-        `select brand_id, name from brands
-          where brand_id = any($1) and is_active = true order by name`,
-        [req.session.brands || []]
+      const [b, a] = await Promise.all([
+        query(`select brand_id, name from brands
+                where brand_id = any($1) and is_active = true order by name`,
+              [req.session.brands || []]),
+        query(`select agency_id, name from agencies
+                where is_active = true order by name`)
+      ]);
+      const u = await query(
+        `select display_name from app_users where username = $1`,
+        [req.session.user]
       );
-      res.json({ brands: rows, active: req.session.activeBrand, isInternal: !!req.session.isInternal });
+      res.json({
+        brands: b.rows,
+        active: req.session.activeBrand,
+        isInternal: !!req.session.isInternal,
+        agencies: a.rows,
+        user: { username: req.session.user,
+                displayName: u.rows[0]?.display_name || req.session.user }
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
-    }
-  });
-
-  app.post('/api/switch-brand', (req, res) => {
-    try {
-      const brand = assertBrandAllowed(req.session, req.body.brand_id);
-      req.session.activeBrand = brand;
-      req.session.save(() => res.json({ success: true, active: brand }));
-    } catch (err) {
-      res.status(403).json({ error: err.message });
     }
   });
 
