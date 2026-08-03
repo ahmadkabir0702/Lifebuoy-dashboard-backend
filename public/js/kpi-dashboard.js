@@ -130,12 +130,24 @@ function renderKPIFilters() {
       </div>
     </div>`;
 
+  // Campaign grows with every new campaign, so it is a select rather
+  // than a pill row. Month and type stay as pills — short, fixed lists.
+  const selectGroup = (key, values, label, allLabel) => `
+    <div class="kfi-group">
+      <span class="kfi-label">${label}</span>
+      <select class="kfi-select" onchange="applyKpiFilter('${key}', this.value)">
+        ${values.map(v => `
+          <option value="${v}"${kpiFilters[key] === v ? ' selected' : ''}>
+            ${v === 'all' ? allLabel : v}
+          </option>`).join('')}
+      </select>
+    </div>`;
+
   wrap.innerHTML =
-    pillGroup('campaign', campaigns) +
+    selectGroup('campaign', campaigns, 'Campaign', 'All campaigns') +
     pillGroup('month',    months) +
     pillGroup('type',     types);
 }
-
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function renderKPIShell(page) {
   page.innerHTML = `
