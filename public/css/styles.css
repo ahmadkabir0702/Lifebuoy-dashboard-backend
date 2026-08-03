@@ -475,3 +475,30 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
   .filters{position:static;width:100%;grid-template-columns:1fr;box-shadow:none;
     border:1px solid var(--line);padding:14px}
 }
+
+
+/* ---------- KPI tab filters (rendered into the page head) ---------- */
+#kpi-filters-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+#kpi-filters-bar.hidden{display:none!important}
+.cf-group{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.cf-group.hidden{display:none!important}
+
+.kfi-group{display:flex;align-items:center;gap:9px}
+.kfi-label{
+  font:400 13.5px/20px var(--font);color:var(--ink-400);
+  text-transform:none;letter-spacing:0;white-space:nowrap;
+}
+.kfi-pills{display:flex;gap:6px;flex-wrap:wrap}
+.kfi-pill{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:34px;padding:0 13px;border-radius:var(--r-pill);
+  border:1px solid var(--line);background:var(--white);
+  font:400 13.5px var(--font);color:var(--ink-600);cursor:pointer;
+  transition:background-color .15s var(--ease),color .15s var(--ease);
+}
+.kfi-pill:hover{background:var(--canvas-2);color:var(--ink-900)}
+.kfi-pill.kfi-active{
+  background:var(--sel);border-color:var(--sel-line);
+  color:var(--ink-900);font-weight:500;
+}
+.kfi-select{height:34px;min-width:170px}
