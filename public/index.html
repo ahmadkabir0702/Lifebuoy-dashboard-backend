@@ -298,6 +298,7 @@
           <h1 id="topbar-title">Creative Hub</h1>
           <div class="spacer"></div>
 
+          <div class="cf-group" id="creative-filters">
           <input type="text" id="search-filter" class="search-input"
                  placeholder="Search ID or name" onkeyup="render()">
 
@@ -359,6 +360,9 @@
               </div>
             </div>
           </div>
+          </div><!-- /#creative-filters -->
+
+          <div id="kpi-filters-bar" class="hidden"></div>
         </div>
 
         <div class="filter-pills" id="filter-pills"></div>
@@ -442,5 +446,21 @@ window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
   <script src="/js/dashboard.js"></script>
   <script src="/js/kpi-dashboard.js"></script>
   <script src="/js/pretest.js"></script>
+  <script>
+  /* The two tabs have different filters. Show whichever belongs to the
+     active tab; the KPI bar is rendered by kpi-dashboard.js into the
+     #kpi-filters-bar slot that now lives in the page head. */
+  (function(){
+    const orig = window.setNav;
+    window.setNav = function(page, el){
+      if (typeof orig === 'function') orig(page, el);
+      const kpi = page === 'kpi';
+      document.getElementById('creative-filters')?.classList.toggle('hidden', kpi);
+      document.getElementById('kpi-filters-bar')?.classList.toggle('hidden', !kpi);
+      document.getElementById('filter-pills')?.classList.toggle('hidden', kpi);
+      if (kpi && typeof renderKPIFilters === 'function') renderKPIFilters();
+    };
+  })();
+  </script>
 </body>
 </html>
