@@ -199,12 +199,107 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
          a.seg3 || null, a.seg4 || null, safeDur]
       );
 
-      res.json({ success: true, creativeId, aiPending: true });
+      res.json({
+        success: true, creativeId, aiPending: true,
+        analysis: {
+          hook: a.hook || null,
+          segments: [a.seg1, a.seg2, a.seg3, a.seg4],
+          duration: safeDur
+        }
+      });
     } catch (err) {
       console.error('[add-creative]', err.message);
       if (!res.headersSent) {
         res.status(500).json({ error: err.message, creativeId, aiPending: false });
       }
+    } finally {
+      if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {} }
+    }
+  });
+
+  // Re-run the analysis on a creative that already exists. Used when the
+  // first attempt failed — the row is already saved, only the
+  // descriptions are missing.
+  app.post('/api/regenerate-description', async (req, res) => {
+    let brand;
+    try { brand = resolveBrand(req); }
+    catch (err) { return res.status(403).json({ error: err.message }); }
+
+    const { creative_id } = req.body;
+    if (!creative_id) return res.status(400).json({ error: 'creative_id is required' });
+    if (!ai || !youtubedl) return res.status(503).json({ error: 'Video analysis is not configured on this server.' });
+
+    let videoPath = null, geminiFile = null;
+    try {
+      const { rows } = await query(
+        `select ig_link, fb_link, tt_link from creatives
+          where creative_id = $1 and brand_id = $2`,
+        [creative_id, brand]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Creative not found for this brand' });
+
+      const videoLink = rows[0].ig_link || rows[0].tt_link || rows[0].fb_link;
+      if (!videoLink) return res.status(400).json({ error: 'This creative has no video link to analyse.' });
+
+      videoPath = path.join(os.tmpdir(), `regen_${Date.now()}.mp4`);
+      await youtubedl(videoLink, {
+        output: videoPath, format: 'mp4',
+        addHeader: [
+          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+          'accept-language:en-US,en;q=0.9'
+        ]
+      });
+
+      geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+      let state = await ai.files.get({ name: geminiFile.name });
+      while (state.state === 'PROCESSING') {
+        await new Promise(r => setTimeout(r, 3000));
+        state = await ai.files.get({ name: geminiFile.name });
+      }
+      if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
+
+      const prompt = `Watch this video carefully. Extract the following:
+1. "hook": A 1-2 sentence description of the opening hook.
+2. "seg1": (0-25%) Describe the setting, who appears, what action or message is shown.
+3. "seg2": (25-50%) Describe how the narrative develops.
+4. "seg3": (50-75%) Describe the core message or product moment.
+5. "seg4": (75-100%) Describe the closing and call to action.
+6. "duration": The exact length of the video in seconds (number).
+Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys.
+Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
+
+      const result = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [
+          { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+          { text: prompt }
+        ]}],
+        config: { responseMimeType: 'application/json', maxOutputTokens: 2000 }
+      });
+
+      const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+      const dur = parseFloat(a.duration);
+      const safeDur = Number.isFinite(dur) && dur >= 1 && dur <= 600 ? dur : null;
+
+      await query(
+        `update creatives
+            set content_hook = $2, seg1 = $3, seg2 = $4, seg3 = $5, seg4 = $6,
+                duration_s = coalesce($7, duration_s)
+          where creative_id = $1`,
+        [creative_id, a.hook || null, a.seg1 || null, a.seg2 || null,
+         a.seg3 || null, a.seg4 || null, safeDur]
+      );
+
+      res.json({
+        success: true, creativeId: creative_id,
+        analysis: { hook: a.hook || null,
+                    segments: [a.seg1, a.seg2, a.seg3, a.seg4],
+                    duration: safeDur }
+      });
+    } catch (err) {
+      console.error('[regenerate-description]', err.message);
+      res.status(500).json({ error: err.message });
     } finally {
       if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
       if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {} }
