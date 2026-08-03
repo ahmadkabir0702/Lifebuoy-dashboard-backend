@@ -257,16 +257,20 @@
   </div>
 
   
+<div class="app">
+    <div class="masthead">
+      <div class="masthead-left">
+        <div class="masthead-mark">WPP Media</div>
+        <div class="masthead-product">Campaign Lens</div>
+      </div>
+      <div class="masthead-right">
+        <button class="masthead-signout" onclick="window.location='/logout'">Sign out</button>
+      </div>
+    </div>
   <div class="shell">
     <div class="sidebar">
-      <div class="nav-item" onclick="window.location='/logout'">
-  <div class="dot" style="background:#dc2626"></div>Sign Out
-</div>
 <div class="brand">
-        <select id="brand-switcher" onchange="switchBrand(this.value)"
-                style="width:100%;background:transparent;border:1px solid rgba(128,128,128,0.3);
-                       border-radius:6px;padding:6px 8px;font-size:15px;font-weight:700;
-                       color:inherit;cursor:pointer;">
+        <select id="brand-switcher" onchange="switchBrand(this.value)">
         </select>
         <div class="brand-sub">Digital · 2026</div>
       </div>
@@ -343,6 +347,7 @@
         </div>
       </div>
     </div>
+  </div>
   </div>
 
   <script src="/js/dashboard.js"></script>
