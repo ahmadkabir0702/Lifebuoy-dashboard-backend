@@ -162,7 +162,7 @@ function setSort(s, el) {
 
 function toggleSortDir() {
   sortAscending = !sortAscending;
-  document.getElementById('sort-dir-btn').innerHTML = sortAscending ? '⬆ Asc' : '⬇ Desc';
+  document.getElementById('sort-dir-btn').innerHTML = sortAscending ? 'Asc' : 'Desc';
   render();
 }
 
@@ -236,7 +236,7 @@ if (sf === 'ACTIVE')                data = data.filter(d => d.adStatus === 'ACTI
   });
 }
 
-function hookColor(v) { return v>=40?'#16a34a':v>=20?'#d97706':'#dc2626'; }
+function hookColor(v) { return v>=40?'#04785C':v>=20?'#8A5A12':'#A32040'; }
 function cqrClass(c)  { return {Good:'good-bg',Average:'avg-bg',Poor:'poor-bg',Invalid:'inv-bg'}[c]||'inv-bg'; }
 function fmt(n)  { return n>=1000000?'$'+(n/1000000).toFixed(1)+'M':n>=1000?'$'+(n/1000).toFixed(0)+'K':'$'+n; }
 function fmtN(n) { return n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(0)+'K':String(n); }
@@ -311,9 +311,9 @@ function renderCards(data) {
       <div class="card-campaign">${d.campaign} · ${d.month}</div>
       <div class="card-tags">${durTag}${ctTag}${valTag}</div>
       <div class="mini-bars">
-        <div class="mini-bar-row"><div class="mini-bar-label">Reach</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${rchPct}%;background:#8b5cf6"></div></div><div class="mini-bar-val">${fmtN(d.reach)}</div></div>
+        <div class="mini-bar-row"><div class="mini-bar-label">Reach</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${rchPct}%;background:#000050"></div></div><div class="mini-bar-val">${fmtN(d.reach)}</div></div>
         <div class="mini-bar-row"><div class="mini-bar-label">Hook</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hkPct}%;background:${hookColor(d.hookRate)}"></div></div><div class="mini-bar-val" style="color:${hookColor(d.hookRate)}">${(d.hookRate||0).toFixed(1)}%</div></div>
-        <div class="mini-bar-row"><div class="mini-bar-label">Hold</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hdPct}%;background:#3b82f6"></div></div><div class="mini-bar-val">${hlValFormatted}</div></div>
+        <div class="mini-bar-row"><div class="mini-bar-label">Hold</div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${hdPct}%;background:#000050"></div></div><div class="mini-bar-val">${hlValFormatted}</div></div>
       </div>
     <div class="card-footer"><span class="cqr-badge ${isNotBoosted?'inv-bg':cqrClass(displayCqr)}">${isNotBoosted?'Not Boosted':displayCqr}</span></div>
     </div>`;
@@ -346,7 +346,7 @@ function getMetricsHTML(item, titleLabel) {
         <div class="dm"><div class="dm-label">CQR Rating</div><div class="dm-val big-cqr ${cqrColorClass}">${item.cqr||'—'}</div>${durLabel}</div>
         <div class="dm"><div class="dm-label">Spend &amp; Reach</div><div class="dm-val">${fmt(item.spend)}</div><div style="font-size:10px;color:var(--c-muted);margin-top:2px;">Reach: ${fmtN(item.reach)} | Impr: ${fmtN(item.impressions)}</div></div>
         <div class="dm"><div class="dm-label">Hook Rate</div><div class="dm-val" style="color:${hookColor(item.hookRate)}">${(item.hookRate||0).toFixed(1)}%</div><div><span class="kpi-pill ${cqrClass(item.hookQual)}">${item.hookQual||'—'}</span></div></div>
-        <div class="dm"><div class="dm-label">Hold Rate</div><div class="dm-val" style="color:#3b82f6">${hlValFormatted}</div><div><span class="kpi-pill ${cqrClass(item.holdQual)}">${item.holdQual||'—'}</span></div></div>
+        <div class="dm"><div class="dm-label">Hold Rate</div><div class="dm-val" style="color:#000050">${hlValFormatted}</div><div><span class="kpi-pill ${cqrClass(item.holdQual)}">${item.holdQual||'—'}</span></div></div>
       </div>
     </div>`;
 }
@@ -357,7 +357,7 @@ function getRecHTML(item, titleLabel) {
     const isActioned = item.actionStatus && item.actionStatus.toLowerCase() === 'actioned';
     const actionBadge = isActioned
       ? `<div class="sheet-rec-action">Actioned by ${item.actionBy||'Unknown'} on ${item.actionDate||'Date unknown'} (${item.agency||'Agency unassigned'})</div>`
-      : `<div class="sheet-rec-action" style="color:#b45309">Pending action (${item.agency||'Agency unassigned'}) <button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button></div>`;
+      : `<div class="sheet-rec-action" style="color:#8A5A12">Pending action (${item.agency||'Agency unassigned'}) <button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button></div>`;
     return `<div class="sheet-rec"><div class="sheet-rec-content"><div class="sheet-rec-label">${titleLabel} Live Recommendation</div><div class="sheet-rec-text">${item.recommendation}</div>${actionBadge}</div></div>`;
   } else {
     return `<div class="sheet-rec" style="opacity:0.6;border-color:var(--c-border);background:var(--c-surface);"><div class="sheet-rec-content"><div class="sheet-rec-label" style="color:var(--c-muted);">${titleLabel} Live Recommendation</div><div class="sheet-rec-text" style="color:var(--c-muted);">No recommendation provided.</div></div></div>`;
@@ -494,8 +494,8 @@ function renderDetail(d) {
   if (retChart)   retChart.destroy();
   if (radarChart) radarChart.destroy();
 
-  const gc = '#E6E8F0';   // gridlines, line-200
-  const tc = '#6B7196';   // axis labels, ink-400
+  const gc = '#DCDCE6';   // gridlines, line-200
+  const tc = '#6B6B90';   // axis labels, ink-400
   const norm = v => Math.min(Math.round(v), 100);
 
   const retDatasets = [], radDatasets = [];
@@ -503,8 +503,8 @@ function renderDetail(d) {
 
   if (d.platform === 'both') {
     hookPointLabel = 'Hook (3s/2s)';
-    retDatasets.push({label:'Meta %',   data:d._meta.ret, borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.1)', fill:true, tension:0.3, pointBackgroundColor:'#1877f2', pointRadius:4, borderWidth:2});
-    retDatasets.push({label:'TikTok %', data:d._tt.ret,   borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.1)',   fill:true, tension:0.3, pointBackgroundColor:'#ff0050', pointRadius:4, borderWidth:2});
+    retDatasets.push({label:'Meta %',   data:d._meta.ret, borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.1)', fill:true, tension:0.3, pointBackgroundColor:'#1877f2', pointRadius:0, borderWidth:2});
+    retDatasets.push({label:'TikTok %', data:d._tt.ret,   borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.1)',   fill:true, tension:0.3, pointBackgroundColor:'#ff0050', pointRadius:0, borderWidth:2});
 
     // Radar: Eng Rate, Hook Rate, Hold Rate, CPM Efficiency, Reach
     const metaEngRate = d._meta.impressions > 0 ? norm((d._meta.reach / d._meta.impressions) * 200) : 0;
@@ -514,20 +514,20 @@ function renderDetail(d) {
     const metaReachN  = norm(d._meta.reach / 50000 * 100);
     const ttReachN    = norm(d._tt.reach   / 50000 * 100);
 
-    radDatasets.push({label:'Meta',   data:[metaEngRate, norm(d._meta.hookRate*2), norm(d._meta.holdRate*2), metaCPMEff, metaReachN], borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.15)', borderWidth:2, pointRadius:3});
-    radDatasets.push({label:'TikTok', data:[ttEngRate,   norm(d._tt.hookRate*2),   norm(d._tt.holdRate*2),   ttCPMEff,   ttReachN],   borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.15)',   borderWidth:2, pointRadius:3});
+    radDatasets.push({label:'Meta',   data:[metaEngRate, norm(d._meta.hookRate*2), norm(d._meta.holdRate*2), metaCPMEff, metaReachN], borderColor:'#1877f2', backgroundColor:'rgba(24,119,242,0.15)', borderWidth:2, pointRadius:0});
+    radDatasets.push({label:'TikTok', data:[ttEngRate,   norm(d._tt.hookRate*2),   norm(d._tt.holdRate*2),   ttCPMEff,   ttReachN],   borderColor:'#ff0050', backgroundColor:'rgba(255,0,80,0.15)',   borderWidth:2, pointRadius:0});
   } else {
     hookPointLabel = d.platform==='tiktok'?'2s hook':'3s hook';
     const color  = d.platform==='tiktok'?'#ff0050':'#1877f2';
     const bgLine = d.platform==='tiktok'?'rgba(255,0,80,0.1)':'rgba(24,119,242,0.1)';
     const bgRad  = d.platform==='tiktok'?'rgba(255,0,80,0.15)':'rgba(24,119,242,0.15)';
-    retDatasets.push({label:'%', data:d.ret, borderColor:color, backgroundColor:bgLine, fill:true, tension:0.3, pointBackgroundColor:color, pointRadius:4, borderWidth:2});
+    retDatasets.push({label:'%', data:d.ret, borderColor:color, backgroundColor:bgLine, fill:true, tension:0.3, pointBackgroundColor:color, pointRadius:0, borderWidth:2});
 
     const engRate = d.impressions > 0 ? norm((d.reach / d.impressions) * 200) : 0;
     const cpmEff  = (d.spend > 0 && d.reach > 0) ? norm(Math.max(0, 100 - (d.spend / d.reach * 1000))) : 0;
     const reachN  = norm(d.reach / 50000 * 100);
 
-    radDatasets.push({label:d.platform, data:[engRate, norm(d.hookRate*2), norm(d.holdRate*2), cpmEff, reachN], borderColor:color, backgroundColor:bgRad, borderWidth:2, pointRadius:3});
+    radDatasets.push({label:d.platform, data:[engRate, norm(d.hookRate*2), norm(d.holdRate*2), cpmEff, reachN], borderColor:color, backgroundColor:bgRad, borderWidth:2, pointRadius:0});
   }
 
   retChart = new Chart(document.getElementById('retChart'), {
@@ -753,17 +753,17 @@ async function submitCreative(e) {
 
   const setProgress = (pct, msg, color) => {
     progressBar.style.width = pct + '%';
-    progressBar.style.background = color || '#4f46e5';
+    progressBar.style.background = color || '#000050';
     progressText.innerText = msg;
   };
 
-  setProgress(10, 'Submitting creative details...', '#4f46e5');
+  setProgress(10, 'Submitting creative details...', '#000050');
 
   try {
-    const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#4f46e5'), 800);
-    const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#4f46e5'), 4000);
-    const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#4f46e5'), 15000);
-    const t4 = setTimeout(() => setProgress(90, 'Saving to database...', '#4f46e5'), 35000);
+    const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#000050'), 800);
+    const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#000050'), 4000);
+    const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#000050'), 15000);
+    const t4 = setTimeout(() => setProgress(90, 'Saving to database...', '#000050'), 35000);
 
     const res = await fetch('/api/add-creative', {
       method: 'POST',
@@ -775,19 +775,19 @@ async function submitCreative(e) {
 
     const result = await res.json();
     if (result.success) {
-      setProgress(100, 'Saved.', '#16a34a');
+      setProgress(100, 'Saved.', '#04785C');
       showCreativeSummary(result);
     } else {
-      setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#dc2626');
-      progressBar.style.background = '#dc2626';
+      setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#A32040');
+      progressBar.style.background = '#A32040';
       // The row may already exist even when the analysis failed.
       if (result.creativeId) showCreativeSummary(result);
       else resetSubmitUI(3000);
     }
   } catch (err) {
     console.error(err);
-    setProgress(100, 'Network error — could not reach server.', '#dc2626');
-    progressBar.style.background = '#dc2626';
+    setProgress(100, 'Network error — could not reach server.', '#A32040');
+    progressBar.style.background = '#A32040';
     resetSubmitUI(3000);
   }
 }
