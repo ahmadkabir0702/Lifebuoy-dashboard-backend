@@ -115,8 +115,8 @@ app.get('/api/brands', async (req, res) => {
   // -------------------------------------------------------------------
   //  ADD CREATIVE — writes to `creatives`, then Gemini fills the rest
   // -------------------------------------------------------------------
-  app.post('/api/add-creative', async (req, res) => {
-    const { campaign, type, ig, fb, tt, repurposed, originalId } = req.body;
+ app.post('/api/add-creative', async (req, res) => {
+    const { campaign, type, date, ig, fb, tt, repurposed, originalId } = req.body;
     let brand;
     try { brand = resolveBrand(req); }
     catch (err) { return res.status(403).json({ error: err.message }); }
@@ -126,11 +126,11 @@ app.get('/api/brands', async (req, res) => {
     }
     if (!campaign) return res.status(400).json({ error: 'Campaign is required.' });
 
-    const safeBrand = brand.replace(/\s+/g, '');
-    const safeCampaign = String(campaign).replace(/\s+/g, '');
+    // The creative_id is typed by hand into ad names after the pipe, so
+    // it has to be short. Brand + type + a 6-char base36 stamp.
     const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
-    const repCode = repurposed === 'Yes' ? 'Repurposed' : 'Original';
-    const creativeId = `${safeBrand}_${safeCampaign}_${typeCode}_${repCode}_${Date.now()}`;
+    const stamp = Date.now().toString(36).slice(-6).toUpperCase();
+    const creativeId = `${brand.toUpperCase()}_${typeCode}_${stamp}`;
 
     let videoPath = null, geminiFile = null;
 
@@ -139,8 +139,8 @@ app.get('/api/brands', async (req, res) => {
         `insert into creatives
            (creative_id, brand_id, date, campaign, type, is_repurposed,
             original_creative_id, content_type, ig_link, fb_link, tt_link)
-         values ($1,$2,current_date,$3,$4,$5,$6,'Video',$7,$8,$9)`,
-        [creativeId, brand, campaign, type, repurposed === 'Yes',
+         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',$8,$9,$10)`,
+        [creativeId, brand, date || null, campaign, type, repurposed === 'Yes',
          originalId || null, ig || null, fb || null, tt || null]
       );
 
@@ -148,7 +148,6 @@ app.get('/api/brands', async (req, res) => {
       if (!videoLink) return res.json({ success: true, creativeId, aiPending: false });
       if (!ai || !youtubedl) return res.json({ success: true, creativeId, aiPending: false });
 
-      // Respond only after analysis, matching the previous behaviour.
       videoPath = path.join(os.tmpdir(), `temp_video_${Date.now()}.mp4`);
       await youtubedl(videoLink, {
         output: videoPath, format: 'mp4',
@@ -173,6 +172,7 @@ app.get('/api/brands', async (req, res) => {
 4. "seg3": (50-75%) Describe the core message or product moment.
 5. "seg4": (75-100%) Describe the closing and call to action.
 6. "duration": The exact length of the video in seconds (number).
+Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys — the dashboard labels segments by position, so a missing key mislabels the rest.
 Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
 
       const result = await ai.models.generateContent({
@@ -186,6 +186,9 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
 
       const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
       const dur = parseFloat(a.duration);
+      // Gemini estimates duration by watching, which drives the retention
+      // denominator. Anything outside 1-600s is a bad read, not a long video.
+      const safeDur = Number.isFinite(dur) && dur >= 1 && dur <= 600 ? dur : null;
 
       await query(
         `update creatives
@@ -193,14 +196,12 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
                 duration_s = $7
           where creative_id = $1`,
         [creativeId, a.hook || null, a.seg1 || null, a.seg2 || null,
-         a.seg3 || null, a.seg4 || null,
-         Number.isFinite(dur) && dur > 0 ? dur : null]
+         a.seg3 || null, a.seg4 || null, safeDur]
       );
 
       res.json({ success: true, creativeId, aiPending: true });
     } catch (err) {
       console.error('[add-creative]', err.message);
-      // The creative row already exists; the analysis can be retried.
       if (!res.headersSent) {
         res.status(500).json({ error: err.message, creativeId, aiPending: false });
       }
