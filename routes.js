@@ -160,7 +160,11 @@ app.get('/api/brands', async (req, res) => {
 
       videoPath = path.join(os.tmpdir(), `temp_video_${Date.now()}.mp4`);
       await youtubedl(videoLink, {
-        output: videoPath, format: 'mp4',
+        output: videoPath,
+        format: 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b',
+        mergeOutputFormat: 'mp4',
+        noWarnings: true,
+        noCheckCertificates: true,
         addHeader: [
           'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
           'accept-language:en-US,en;q=0.9'
@@ -253,8 +257,12 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
       if (!videoLink) return res.status(400).json({ error: 'This creative has no video link to analyse.' });
 
       videoPath = path.join(os.tmpdir(), `regen_${Date.now()}.mp4`);
-      await youtubedl(videoLink, {
-        output: videoPath, format: 'mp4',
+        await youtubedl(videoLink, {
+        output: videoPath,
+        format: 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b',
+        mergeOutputFormat: 'mp4',
+        noWarnings: true,
+        noCheckCertificates: true,
         addHeader: [
           'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
           'accept-language:en-US,en;q=0.9'
