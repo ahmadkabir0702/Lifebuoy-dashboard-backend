@@ -501,3 +501,11 @@ select:focus, .search-input:focus, .modal-input:focus { border-color:var(--viole
   .topbar { flex-wrap:wrap; align-items:flex-start; padding:12px 24px; }
   .filters { flex:1 1 100%; margin-top:12px; justify-content:flex-start; }
 }
+
+.kfi-select {
+  height:36px; background:var(--surface-0);
+  border:1px solid var(--line-200); border-radius:var(--r-sm);
+  padding:0 10px; font:400 13px var(--font-ui); color:var(--ink-900);
+  min-width:200px; cursor:pointer;
+}
+.kfi-select:hover { border-color:var(--ink-300); }
