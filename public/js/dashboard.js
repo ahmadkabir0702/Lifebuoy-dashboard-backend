@@ -671,6 +671,9 @@ function showCreativeSummary(result) {
   const segs = (a.segments || []).filter(Boolean);
   const labels = ['0–25%', '25–50%', '50–75%', '75–100%'];
   const failed = !a.hook && segs.length === 0;
+    // submitCreative disables pointer events on the modal while processing.
+  // The old code restored them in resetSubmitUI(); this path bypasses it.
+  document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 
   document.getElementById('ac-progress-container').style.display = 'none';
   document.getElementById('ac-confirm-btn').style.display = 'none';
