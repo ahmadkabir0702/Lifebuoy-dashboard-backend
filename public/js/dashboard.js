@@ -12,17 +12,20 @@ let currentPlatform = 'both', currentSort = 'hook', sortAscending = false, selec
 let currentPage = 'creatives';
 let chartsInit = {};
 
+let AGENCIES = [], CURRENT_USER = '';
+
 async function loadBrands() {
   try {
     const res = await fetch('/api/brands');
     if (!res.ok) return;
-    const { brands, active } = await res.json();
+    const { brands, active, agencies, user } = await res.json();
+    AGENCIES = agencies || [];
+    CURRENT_USER = (user && user.displayName) || '';
     const sel = document.getElementById('brand-switcher');
     if (!sel) return;
     sel.innerHTML = brands
       .map(b => `<option value="${b.brand_id}"${b.brand_id === active ? ' selected' : ''}>${b.name}</option>`)
       .join('');
-    // Only one brand: show it as a label rather than a dropdown
     if (brands.length < 2) sel.style.pointerEvents = 'none';
   } catch (e) { console.error('loadBrands', e); }
 }
@@ -546,9 +549,10 @@ let pendingAction = null;
 function openActionModal(creativeId, platform) {
   pendingAction = { id: creativeId, platform };
   document.getElementById('actionModal').style.display = 'flex';
-  document.getElementById('actionNameInput').value = '';
-  document.getElementById('actionAgencyInput').value = '';
-  document.getElementById('actionNameInput').focus();
+  document.getElementById('actionNameDisplay').textContent = CURRENT_USER || 'Unknown user';
+  const ag = document.getElementById('actionAgencyInput');
+  ag.innerHTML = '<option value="">Select agency</option>' +
+    AGENCIES.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
 }
 
 function closeActionModal() {
@@ -557,9 +561,9 @@ function closeActionModal() {
 }
 
 async function confirmAction() {
-  const name   = document.getElementById('actionNameInput').value.trim();
-  const agency = document.getElementById('actionAgencyInput').value.trim();
-  if (!name) return alert("Please enter your name.");
+  const name   = CURRENT_USER;
+  const agency = document.getElementById('actionAgencyInput').value;
+  if (!agency) return alert("Please select an agency.");
   const btn = document.getElementById('modalConfirmBtn');
   const origText = btn.innerText;
   btn.innerText = 'Updating...'; btn.disabled = true;
