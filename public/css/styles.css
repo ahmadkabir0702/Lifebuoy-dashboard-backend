@@ -513,4 +513,9 @@ select:focus, .search-input:focus, .modal-input:focus { border-color:var(--viole
 .field-label { display:block; font:500 11px/12px var(--font-mono); letter-spacing:.08em;
   color:var(--ink-500); text-transform:uppercase; margin-bottom:6px; }
 .field-static { font:500 14px/20px var(--font-ui); color:var(--ink-900); margin-bottom:16px; }
-.sort-btn, .pt { line-height:1; }
+/* These are <div>s, not <button>s, so nothing centres the text for
+   them. Flex does it explicitly. */
+.sort-btn, .pt, .kpi-tab-btn {
+  display:inline-flex; align-items:center; justify-content:center;
+  line-height:1;
+}
