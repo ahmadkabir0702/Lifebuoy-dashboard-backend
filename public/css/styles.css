@@ -509,3 +509,8 @@ select:focus, .search-input:focus, .modal-input:focus { border-color:var(--viole
   min-width:200px; cursor:pointer;
 }
 .kfi-select:hover { border-color:var(--ink-300); }
+
+.field-label { display:block; font:500 11px/12px var(--font-mono); letter-spacing:.08em;
+  color:var(--ink-500); text-transform:uppercase; margin-bottom:6px; }
+.field-static { font:500 14px/20px var(--font-ui); color:var(--ink-900); margin-bottom:16px; }
+.sort-btn, .pt { line-height:1; }
