@@ -535,3 +535,49 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
 .sk-chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:1200px){ .sk-kpi-row{grid-template-columns:repeat(3,1fr)} }
 @media (max-width:800px){ .sk-kpi-row{grid-template-columns:1fr 1fr} .sk-chart-row{grid-template-columns:1fr} }
+
+/* ---------- Lineage: originals ↔ repurposed ------------------------
+   Shown in the creative detail modal. Each row opens that creative.  */
+.lineage{
+  background:var(--canvas-2);border-radius:var(--r-card);
+  padding:16px 18px;margin:16px 0 4px;
+}
+.lin-title{
+  font:400 13px/18px var(--font);color:var(--ink-600);
+  display:flex;align-items:center;gap:8px;margin-bottom:10px;
+}
+.lin-count{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:19px;height:19px;padding:0 6px;border-radius:var(--r-pill);
+  background:var(--navy);color:#fff;font-size:11px;font-weight:500;
+}
+.lin-row{
+  display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;
+  width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;
+  background:var(--white);border:1px solid var(--line-soft);border-radius:var(--r-btn);
+  font-family:var(--font);cursor:pointer;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.lin-row:last-child{margin-bottom:0}
+.lin-row:hover{border-color:var(--line);background:#fff}
+.lin-row:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(0,0,80,.18)}
+.lin-row-plain{cursor:default}
+.lin-row-plain:hover{border-color:var(--line-soft)}
+.lin-name{
+  font:500 14px/20px var(--font);color:var(--ink-900);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.lin-meta{font:400 13px/20px var(--font);color:var(--ink-600);white-space:nowrap}
+.lin-metric{
+  font:400 13px/20px var(--font);color:var(--ink-900);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.tag-lineage{
+  display:inline-flex;align-items:center;height:22px;padding:0 9px;
+  border-radius:var(--r-pill);background:var(--sel);color:var(--ink-900);
+  font:500 12px/1 var(--font);
+}
+@media (max-width:640px){
+  .lin-row{grid-template-columns:1fr;gap:3px}
+  .lin-meta,.lin-metric{white-space:normal}
+}
