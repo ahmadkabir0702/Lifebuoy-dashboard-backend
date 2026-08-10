@@ -32,8 +32,7 @@ function parseOriginal(raw) {
   const m = raw.match(/(https?:\/\/[^\s_]+)/);
   if (m) out.originalUrl = m[1];
   if (raw.includes('http')) out.originalName = raw.split('_http')[0].replace(/_/g, ' ');
-  const parts = raw.split('_');
-  if (parts.length >= 2) out.extractedOrigId = parts[0] + '_' + parts[1];
+  out.extractedOrigId = raw.split('_http')[0] || null;
   return out;
 }
 
