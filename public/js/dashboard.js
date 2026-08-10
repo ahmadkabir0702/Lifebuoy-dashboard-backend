@@ -42,11 +42,14 @@ async function switchBrand(brandId) {
       throw new Error(e.error || `${res.status} ${res.statusText}`);
     }
     selectedId = null;
-    await loadData();
-    // Re-render whichever tab is open, so the switch is not lost on tab change
-    if (currentPage === 'kpi' && typeof renderKPIDashboard === 'function') {
-      renderKPIDashboard();
+    // Campaigns and months belong to the old brand — carrying the selection
+    // over silently filters the new brand down to nothing.
+    if (typeof kpiFilters !== 'undefined') {
+      kpiFilters.campaign = 'all';
+      kpiFilters.month    = 'all';
+      kpiFilters.type     = 'all';
     }
+    await loadData();
   } catch (e) {
     alert('Could not switch brand: ' + e.message);
   }
@@ -146,6 +149,7 @@ async function loadData() {
       return;
     }
     populateFilters();
+    if (typeof syncFilterPills === 'function') syncFilterPills();
     render();
   } catch(err) {
     document.getElementById('kpi-row').innerHTML =
@@ -217,10 +221,11 @@ function setNav(page, element) {
     // systems from the same screen.
     const topFilters = document.querySelector('.topbar .filters');
     if (topFilters) topFilters.style.display = (page === 'kpi') ? 'none' : 'flex';
-    if (page === 'kpi') {
-        if (isLoading) showSkeleton();
-        else if (typeof renderKPIDashboard === 'function') renderKPIDashboard();
-    }
+    // Re-render the tab being opened. render() only ever draws the active
+    // page, so a tab left in the background holds the previous brand's data
+    // until it is redrawn here.
+    if (isLoading) showSkeleton();
+    else render();
 }
 
 function setPlatform(p, el) {
