@@ -52,9 +52,47 @@ async function switchBrand(brandId) {
   }
 }
 
+// ── Loading skeleton ──────────────────────────────────────────────────────────
+// Placeholders in the shape of the real content, with a light sweep across them.
+// Styles live in styles.css (.sk / .sk-card).
+function skeletonKpis(n = 5) {
+  const w = [[64,46,80],[58,62,70],[70,38,76],[52,70,64],[66,30,72]];
+  return Array.from({length: n}, (_, i) => {
+    const [a,b,c] = w[i % w.length];
+    return `<div class="sk-card">
+      <div class="sk" style="width:${a}%;height:11px;margin-bottom:12px"></div>
+      <div class="sk" style="width:${b}%;height:26px"></div>
+      <div class="sk" style="width:${c}%;height:10px;margin-top:8px"></div>
+    </div>`;
+  }).join('');
+}
+
+function skeletonCards(n = 8) {
+  const w = [[44,72,56],[40,66,60],[48,78,52],[42,70,58]];
+  return Array.from({length: n}, (_, i) => {
+    const [a,b,c] = w[i % w.length];
+    return `<div class="sk-card">
+      <div class="sk" style="width:${a}%;height:10px;margin-bottom:12px"></div>
+      <div class="sk" style="width:${b}%;height:16px;margin-bottom:7px"></div>
+      <div class="sk" style="width:${c}%;height:11px;margin-bottom:14px"></div>
+      <div class="sk" style="width:100%;height:5px;margin-bottom:9px"></div>
+      <div class="sk" style="width:100%;height:5px;margin-bottom:9px"></div>
+      <div class="sk" style="width:100%;height:5px"></div>
+    </div>`;
+  }).join('');
+}
+
+function showSkeleton() {
+  const k = document.getElementById('kpi-row');
+  const g = document.getElementById('card-grid');
+  const c = document.getElementById('grid-count');
+  if (k) k.innerHTML = skeletonKpis();
+  if (g) g.innerHTML = skeletonCards();
+  if (c) c.textContent = '';
+}
+
 async function loadData() {
-  document.getElementById('kpi-row').innerHTML =
-    `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">⏳ Loading data...</div>`;
+  showSkeleton();
   try {
     const response = await fetch('/api/dashboard-data');
     if (!response.ok) throw new Error("Backend connection failed.");
@@ -69,7 +107,7 @@ async function loadData() {
 
     if (ALL.length === 0) {
       document.getElementById('kpi-row').innerHTML =
-        `<div style="grid-column:1/-1;padding:20px;color:var(--c-muted)">No creatives added for ${BRAND_NAME} yet. Use Add Creative to enter one.</div>`;
+        `<div class="load-msg">No creatives added for ${BRAND_NAME} yet. Use Add creative to enter one.</div>`;
       // Clear the previous brand's cards — returning early used to leave
       // them on screen next to a message saying there were none.
       document.getElementById('card-grid').innerHTML = '';
@@ -81,7 +119,10 @@ async function loadData() {
     render();
   } catch(err) {
     document.getElementById('kpi-row').innerHTML =
-      `<div style="grid-column:1/-1;padding:20px;color:var(--c-poor)">Error: ${err.message}</div>`;
+      `<div class="load-msg load-msg-error">Couldn't load campaign data. ${err.message}
+         <button class="load-retry" onclick="loadData()">Try again</button></div>`;
+    document.getElementById('card-grid').innerHTML = '';
+    document.getElementById('grid-count').textContent = '';
     console.error(err);
   }
 }
