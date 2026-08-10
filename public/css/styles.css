@@ -502,3 +502,30 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
   color:var(--ink-900);font-weight:500;
 }
 .kfi-select{height:34px;min-width:170px}
+
+/* ---------- Loading skeleton ---------------------------------------
+   Placeholders in the shape of the real content. The sweep runs on a
+   pseudo-element so it never repaints the block itself.               */
+.sk-card{background:var(--white);border-radius:var(--r-card);padding:18px 20px}
+.sk{background:#E4E9EF;border-radius:4px;position:relative;overflow:hidden}
+.sk::after{
+  content:'';position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);
+  animation:sk-sweep 1.5s var(--ease) infinite;
+}
+@keyframes sk-sweep{100%{transform:translateX(100%)}}
+@media (prefers-reduced-motion:reduce){ .sk::after{animation:none;display:none} }
+
+/* Empty / error messages in the KPI row */
+.load-msg{
+  grid-column:1/-1;background:var(--white);border-radius:var(--r-card);
+  padding:20px;font:400 15px/22px var(--font);color:var(--ink-600);
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+}
+.load-msg-error{color:var(--neg)}
+.load-retry{
+  height:32px;padding:0 13px;border-radius:var(--r-btn);
+  border:1px solid var(--navy);background:var(--white);
+  font:500 13.5px var(--font);color:var(--ink-900);cursor:pointer;
+}
+.load-retry:hover{background:#F4F4F8}
