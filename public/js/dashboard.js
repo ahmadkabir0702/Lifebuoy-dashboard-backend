@@ -82,7 +82,30 @@ function skeletonCards(n = 8) {
   }).join('');
 }
 
+// The KPI tab renders from data already in memory, so switching brand used to
+// leave the previous brand's numbers on screen for the whole fetch.
+function skeletonKpiPage() {
+  const chart = h => `<div class="sk-card" style="padding:20px">
+      <div class="sk" style="width:34%;height:14px;margin-bottom:16px"></div>
+      <div class="sk" style="width:100%;height:${h}px"></div>
+    </div>`;
+  return `
+    <div class="sk" style="width:190px;height:18px;margin-bottom:14px"></div>
+    <div class="sk-kpi-row">${skeletonKpis(5)}</div>
+    <div class="sk" style="width:150px;height:18px;margin:32px 0 14px"></div>
+    <div class="sk-chart-row">${chart(210)}${chart(210)}</div>
+    <div class="sk" style="width:170px;height:18px;margin:32px 0 14px"></div>
+    <div class="sk-chart-row">${chart(210)}${chart(210)}</div>`;
+}
+
+let isLoading = false;
+
 function showSkeleton() {
+  if (currentPage === 'kpi') {
+    const p = document.getElementById('page-kpi');
+    if (p) p.innerHTML = skeletonKpiPage();
+    return;
+  }
   const k = document.getElementById('kpi-row');
   const g = document.getElementById('card-grid');
   const c = document.getElementById('grid-count');
@@ -92,6 +115,7 @@ function showSkeleton() {
 }
 
 async function loadData() {
+  isLoading = true;
   showSkeleton();
   try {
     const response = await fetch('/api/dashboard-data');
@@ -113,6 +137,12 @@ async function loadData() {
       document.getElementById('card-grid').innerHTML = '';
       document.getElementById('grid-count').textContent = '0 creatives';
       populateFilters();
+      isLoading = false;
+      // The KPI tab keeps its skeleton unless we clear it here — the empty
+      // path returns before render(), so renderKpiTab never runs.
+      const kpEmpty = document.getElementById('page-kpi');
+      if (currentPage === 'kpi' && kpEmpty) kpEmpty.innerHTML =
+        `<div class="load-msg">No creatives added for ${BRAND_NAME} yet. Use Add creative to enter one.</div>`;
       return;
     }
     populateFilters();
@@ -123,7 +153,13 @@ async function loadData() {
          <button class="load-retry" onclick="loadData()">Try again</button></div>`;
     document.getElementById('card-grid').innerHTML = '';
     document.getElementById('grid-count').textContent = '';
+    const kp = document.getElementById('page-kpi');
+    if (currentPage === 'kpi' && kp) kp.innerHTML =
+      `<div class="load-msg load-msg-error">Couldn't load campaign data. ${err.message}
+        <button class="load-retry" onclick="loadData()">Try again</button></div>`;
     console.error(err);
+  } finally {
+    isLoading = false;
   }
 }
 
@@ -181,8 +217,9 @@ function setNav(page, element) {
     // systems from the same screen.
     const topFilters = document.querySelector('.topbar .filters');
     if (topFilters) topFilters.style.display = (page === 'kpi') ? 'none' : 'flex';
-    if (page === 'kpi' && typeof renderKPIDashboard === 'function') {
-        renderKPIDashboard();
+    if (page === 'kpi') {
+        if (isLoading) showSkeleton();
+        else if (typeof renderKPIDashboard === 'function') renderKPIDashboard();
     }
 }
 
