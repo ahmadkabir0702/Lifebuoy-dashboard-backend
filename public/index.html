@@ -328,6 +328,15 @@
                 <select id="content-type-filter" onchange="render()"><option value="all">All content types</option></select>
               </div>
               <div>
+                <label for="origin-filter">Origin</label>
+                <select id="origin-filter" onchange="render()">
+                  <option value="all">Originals and repurposed</option>
+                  <option value="original">Originals only</option>
+                  <option value="repurposed">Repurposed only</option>
+                  <option value="has_repurposed">Originals with repurposes</option>
+                </select>
+              </div>
+              <div>
                 <label for="validation-filter">Validation</label>
                 <select id="validation-filter" onchange="render()">
                   <option value="all">All validation</option>
@@ -403,6 +412,7 @@
 const FILTER_LABELS = {
   'campaign-filter':'Campaign', 'month-filter':'Month',
   'content-type-filter':'Content type', 'validation-filter':'Validation',
+  'origin-filter':'Origin',
   'action-filter':'Action status', 'status-filter':'Ad status'
 };
 function toggleFilters(e){ e.stopPropagation(); document.getElementById('filters-panel').classList.toggle('open'); }
