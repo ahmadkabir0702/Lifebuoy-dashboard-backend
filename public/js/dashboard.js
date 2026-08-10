@@ -42,14 +42,11 @@ async function switchBrand(brandId) {
       throw new Error(e.error || `${res.status} ${res.statusText}`);
     }
     selectedId = null;
-    // Campaigns and months belong to the old brand — carrying the selection
-    // over silently filters the new brand down to nothing.
-    if (typeof kpiFilters !== 'undefined') {
-      kpiFilters.campaign = 'all';
-      kpiFilters.month    = 'all';
-      kpiFilters.type     = 'all';
-    }
     await loadData();
+    // Re-render whichever tab is open, so the switch is not lost on tab change
+    if (currentPage === 'kpi' && typeof renderKPIDashboard === 'function') {
+      renderKPIDashboard();
+    }
   } catch (e) {
     alert('Could not switch brand: ' + e.message);
   }
@@ -149,7 +146,6 @@ async function loadData() {
       return;
     }
     populateFilters();
-    if (typeof syncFilterPills === 'function') syncFilterPills();
     render();
   } catch(err) {
     document.getElementById('kpi-row').innerHTML =
@@ -221,11 +217,10 @@ function setNav(page, element) {
     // systems from the same screen.
     const topFilters = document.querySelector('.topbar .filters');
     if (topFilters) topFilters.style.display = (page === 'kpi') ? 'none' : 'flex';
-    // Re-render the tab being opened. render() only ever draws the active
-    // page, so a tab left in the background holds the previous brand's data
-    // until it is redrawn here.
-    if (isLoading) showSkeleton();
-    else render();
+    if (page === 'kpi') {
+        if (isLoading) showSkeleton();
+        else if (typeof renderKPIDashboard === 'function') renderKPIDashboard();
+    }
 }
 
 function setPlatform(p, el) {
@@ -276,6 +271,7 @@ function getData() {
   const vf      = (document.getElementById('validation-filter')   || {}).value || 'all';
   const ctf     = (document.getElementById('content-type-filter') || {}).value || 'all';
   const af      = (document.getElementById('action-filter')       || {}).value || 'all';
+  const of      = (document.getElementById('origin-filter')       || {}).value || 'all';
 
   if (tf !== 'all')   data = data.filter(d => d.type === tf);
   if (mf !== 'all')   data = data.filter(d => d.month === mf);
@@ -304,6 +300,9 @@ if (sf === 'ACTIVE')                data = data.filter(d => d.adStatus === 'ACTI
   if (sf === 'BOOSTED')               data = data.filter(d => d.isBoosted);
   if (sf === 'NOT_BOOSTED')           data = data.filter(d => !d.isBoosted);
   if (sf === 'VALIDATED_NOT_BOOSTED') data = data.filter(d => d.isValidated && !d.isBoosted);
+  if (of === 'original')       data = data.filter(d => !d.isRepurposed);
+  if (of === 'repurposed')     data = data.filter(d => d.isRepurposed);
+  if (of === 'has_repurposed') data = data.filter(d => repurposesOf(d.id).length > 0);
   if (vf === 'validated')     data = data.filter(d => d.isValidated);
   if (vf === 'not_validated') data = data.filter(d => !d.isValidated);
   if (searchQ) data = data.filter(d => d.id.toLowerCase().includes(searchQ) || (d.short||'').toLowerCase().includes(searchQ));
@@ -377,7 +376,10 @@ function renderCards(data) {
       : `<span style="color:${d.platform==='tiktok'?'var(--c-tt)':'var(--c-meta)'};font-weight:700;font-size:10px">${d.platform==='tiktok'?'TT':'META'}</span>`;
 
     const hlValFormatted = d.holdRate >= 1000 ? (d.holdRate/1000).toFixed(1)+'K' : (d.holdRate||0).toFixed(1);
-    const repTag  = d.isRepurposed ? `<span class="tag-repurposed">REPURPOSED</span>` : '';
+    const kidCount = repurposesOf(d.id).length;
+    const repTag  = d.isRepurposed
+      ? `<span class="tag-repurposed">Repurposed</span>`
+      : (kidCount ? `<span class="tag-lineage">${kidCount} repurposed</span>` : '');
     const valTag  = d.isValidated  ? `<span class="tag-validated">✓ Validated</span>` : '';
     const durTag  = d.duration     ? `<span class="tag-duration">${d.duration}s</span>` : '';
     const ctTag   = d.contentType  ? `<span class="tag-content-type">${d.contentType}</span>` : '';
@@ -506,6 +508,60 @@ function buildCreativeBriefHTML(d) {
     </details>`;
 }
 
+// ── Lineage ───────────────────────────────────────────────────────────────────
+// Repurposed assets carry extractedOrigId pointing back at their source.
+function repurposesOf(id) {
+  if (!id || typeof ALL === 'undefined') return [];
+  return ALL.filter(x => x.isRepurposed && x.extractedOrigId === id);
+}
+
+function originOf(d) {
+  if (!d.isRepurposed || !d.extractedOrigId || typeof ALL === 'undefined') return null;
+  return ALL.find(x => x.id === d.extractedOrigId) || null;
+}
+
+function lineageRow(x) {
+  const bits = [x.campaign, x.month].filter(Boolean).join(' · ');
+  const hook = (x.hookRate || x.hookRate === 0) ? kpiPct(x.hookRate) : '—';
+  return `<button class="lin-row" onclick="selectCard('${x.id}')">
+      <span class="lin-name">${x.short || x.id}</span>
+      <span class="lin-meta">${bits}</span>
+      <span class="lin-metric">Hook ${hook}</span>
+    </button>`;
+}
+
+function kpiPct(v) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  return (v > 1 ? v : v * 100).toFixed(1) + '%';
+}
+
+function buildLineageHTML(d) {
+  const kids = repurposesOf(d.id);
+  const orig = originOf(d);
+
+  if (orig) {
+    return `<div class="lineage">
+        <div class="lin-title">Repurposed from</div>
+        ${lineageRow(orig)}
+      </div>`;
+  }
+  if (kids.length) {
+    return `<div class="lineage">
+        <div class="lin-title">Repurposed into <span class="lin-count">${kids.length}</span></div>
+        ${kids.map(lineageRow).join('')}
+      </div>`;
+  }
+  // Repurposed, but the source is not in this brand's data
+  if (d.isRepurposed && d.originalName) {
+    return `<div class="lineage">
+        <div class="lin-title">Repurposed from</div>
+        <div class="lin-row lin-row-plain"><span class="lin-name">${d.originalName}</span>
+          <span class="lin-meta">Not in this dataset</span></div>
+      </div>`;
+  }
+  return '';
+}
+
 function renderDetail(d) {
   const platLabel = d.platform === 'both' ? 'Meta & TikTok' : (d.platform==='tiktok'?'TikTok':'Meta');
   let statsHTML = '', recsHTML = '';
@@ -519,7 +575,6 @@ function renderDetail(d) {
 
   let linkBtns = `<div class="btn-group">`;
   if (d.creativeLink || d.originalUrl) linkBtns += `<button class="view-btn primary" onclick="window.open('${d.creativeLink||d.originalUrl}','_blank')">View Creative ↗</button>`;
-  if (d.isRepurposed && d.extractedOrigId && ALL.find(x=>x.id===d.extractedOrigId)) linkBtns += `<button class="view-btn" onclick="selectCard('${d.extractedOrigId}')">View Original Stats</button>`;
   linkBtns += `</div>`;
 
   let valUI = '';
@@ -529,8 +584,7 @@ function renderDetail(d) {
     if (d.needsBoostWarning) valUI += `<div class="warning-badge">Alert: Validated > 48h, Not Boosted</div>`;
   }
 
-  const repText = d.isRepurposed && d.originalName
-    ? `<div style="font-size:11px;color:var(--c-muted);font-weight:600;margin-top:8px;">Original Asset: <span style="color:var(--c-text);">${d.originalName}</span></div>` : '';
+  const repText = '';
 
   let creatorHTML = '';
   if (d.type === 'Others Say') {
@@ -558,6 +612,7 @@ function renderDetail(d) {
         <button class="close-btn" onclick="closeCreativeModal({target:{id:'creativeModalOverlay'}})">×</button>
       </div>
 
+      ${buildLineageHTML(d)}
       ${statsHTML}
       ${buildCreativeBriefHTML(d)}
 
