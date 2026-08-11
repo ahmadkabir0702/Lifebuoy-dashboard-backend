@@ -9,6 +9,7 @@
 //  through assertBrandAllowed() before touching data. Adding a new
 //  endpoint without that call leaks another client's data.
 // =====================================================================
+const express = require('express');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -450,6 +451,62 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
       res.status(500).json({ error: err.message });
     }
   });
+
+  // -------------------------------------------------------------------
+  //  TEMPORARY manual-upload tool. Takes a raw MP4 body, runs it through
+  //  the same Gemini Files-API flow as add-creative, and returns the
+  //  descriptions without touching the database. Backs upload-test.html.
+  //  Session-protected via the global requireAuth (path is under /api/).
+  //  Safe to delete this route + the HTML page when no longer needed.
+  // -------------------------------------------------------------------
+  app.post('/api/describe-upload',
+    express.raw({ type: () => true, limit: '200mb' }),
+    async (req, res) => {
+      if (!ai) return res.status(500).json({ error: 'Gemini is not configured (GEMINI_API_KEY missing).' });
+      if (!req.body || !req.body.length) return res.status(400).json({ error: 'No file received.' });
+
+      let videoPath = null, geminiFile = null;
+      try {
+        videoPath = path.join(os.tmpdir(), `upload_${Date.now()}.mp4`);
+        fs.writeFileSync(videoPath, req.body);
+
+        geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+        let state = await ai.files.get({ name: geminiFile.name });
+        while (state.state === 'PROCESSING') {
+          await new Promise(r => setTimeout(r, 3000));
+          state = await ai.files.get({ name: geminiFile.name });
+        }
+        if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
+
+        const prompt = `Watch this video carefully. Extract the following:
+1. "hook": A 1-2 sentence description of the opening hook.
+2. "seg1": (0-25%) Describe the setting, who appears, what action or message is shown.
+3. "seg2": (25-50%) Describe how the narrative develops.
+4. "seg3": (50-75%) Describe the core message or product moment.
+5. "seg4": (75-100%) Describe the closing and call to action.
+6. "duration": The exact length of the video in seconds (number).
+Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys.
+Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
+
+        const result = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: [{ role: 'user', parts: [
+            { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+            { text: prompt }
+          ]}],
+          config: { responseMimeType: 'application/json', maxOutputTokens: 2000 }
+        });
+
+        const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+        res.json({ success: true, analysis: a });
+      } catch (err) {
+        console.error('[describe-upload]', err.message);
+        if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+      } finally {
+        if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {} }
+      }
+    });
 
   // -------------------------------------------------------------------
   //  Health check. Doubles as the free-tier keep-alive target.
