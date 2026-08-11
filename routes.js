@@ -478,15 +478,20 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
         }
         if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
 
-        const prompt = `Watch this video carefully. Extract the following:
-1. "hook": A 1-2 sentence description of the opening hook.
-2. "seg1": (0-25%) Describe the setting, who appears, what action or message is shown.
-3. "seg2": (25-50%) Describe how the narrative develops.
-4. "seg3": (50-75%) Describe the core message or product moment.
-5. "seg4": (75-100%) Describe the closing and call to action.
-6. "duration": The exact length of the video in seconds (number).
-Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys.
-Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
+        const prompt = `Watch this video carefully and describe it in consecutive 2.5-second windows.
+
+Rules:
+- Start at 0s and step in exact 2.5-second windows (0–2.5, 2.5–5.0, 5.0–7.5, …) until the very end of the video. The final window may be shorter than 2.5s if the clip does not divide evenly — clamp its "end" to the true video length.
+- Cover the ENTIRE video. Do not skip time. Do not merge windows. A 60-second video must produce 24 windows.
+- For each window write 1-2 specific sentences: what is on screen (people, product, setting, colours), any on-screen text spoken word-for-word if legible, actions, and audio/tone.
+
+Return ONLY a JSON object with these keys, no markdown, no extra text:
+{
+  "duration": <total length in seconds, number>,
+  "segments": [
+    { "start": <number>, "end": <number>, "desc": "<string>" }
+  ]
+}`;
 
         const result = await ai.models.generateContent({
           model: 'gemini-2.5-flash',
@@ -494,7 +499,7 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
             { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
             { text: prompt }
           ]}],
-          config: { responseMimeType: 'application/json', maxOutputTokens: 2000 }
+          config: { responseMimeType: 'application/json', maxOutputTokens: 8000 }
         });
 
         const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
