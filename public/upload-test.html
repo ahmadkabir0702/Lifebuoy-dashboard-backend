@@ -123,18 +123,16 @@ go.addEventListener('click', async ()=>{
   }
 });
 
+function esc(s){ return String(s==null?'—':s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function fmt(t){ const n=Number(t); return Number.isFinite(n) ? n.toFixed(1).replace(/\.0$/,'')+'s' : '?'; }
+
 function render(a){
-  const rows=[
-    ['Hook', a.hook],
-    ['Segment 1 · 0–25%', a.seg1],
-    ['Segment 2 · 25–50%', a.seg2],
-    ['Segment 3 · 50–75%', a.seg3],
-    ['Segment 4 · 75–100%', a.seg4],
-  ];
-  segs.innerHTML = rows.map(([k,v])=>
-    `<div class="seg"><div class="k">${k}</div><div class="v">${(v||'—')
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></div>`).join('');
-  meta.textContent = a.duration!=null ? ('Gemini-estimated duration: '+a.duration+'s') : '';
+  const list = Array.isArray(a.segments) ? a.segments : [];
+  segs.innerHTML = list.map((s,i)=>
+    `<div class="seg"><div class="k">${String(i+1).padStart(2,'0')} · ${fmt(s.start)}–${fmt(s.end)}</div>`+
+    `<div class="v">${esc(s.desc)}</div></div>`).join('') || '<div class="seg"><div class="v">No segments returned.</div></div>';
+  meta.textContent = (a.duration!=null ? 'Duration ≈ '+a.duration+'s' : '') +
+                     (list.length ? '  ·  '+list.length+' windows' : '');
   raw.textContent = JSON.stringify(a, null, 2);
   results.classList.add('show');
   results.scrollIntoView({behavior:'smooth', block:'start'});
