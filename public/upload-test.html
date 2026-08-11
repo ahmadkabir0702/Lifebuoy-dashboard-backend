@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MP4 → Gemini · Temp Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#000050; --ink-900:#1A1A4F; --ink-600:#4A4A75; --ink-400:#6B6B90;
+  --line:#DCDCE6; --white:#FFFFFF; --art-bg:#F1EEE9; --neg:#A32040; --neg-bg:#FBEEF1;
+  --ok:#1F7A4D; --ok-bg:#EDF6F1; --r:6px;
+  --font:'Rubik',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;font:400 15px/22px var(--font);color:var(--ink-900);background:var(--art-bg);-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:40px 24px 80px}
+.badge{display:inline-block;background:#EDE9FF;color:var(--navy);font-size:12px;font-weight:500;letter-spacing:.03em;padding:4px 10px;border-radius:20px;margin-bottom:14px}
+h1{font:400 26px/34px var(--font);margin:0 0 6px}
+.sub{color:var(--ink-600);margin:0 0 28px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:var(--r);padding:24px}
+.drop{border:2px dashed var(--line);border-radius:var(--r);padding:36px 20px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--navy);background:#FAFAFF}
+.drop p{margin:8px 0 0;color:var(--ink-600);font-size:14px}
+.drop strong{color:var(--navy)}
+.file{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;padding:12px 14px;background:#F7F7FB;border:1px solid var(--line);border-radius:var(--r);font-size:14px}
+.file span{color:var(--ink-600)}
+.file .x{cursor:pointer;color:var(--neg);font-weight:500}
+button{margin-top:18px;width:100%;background:var(--navy);color:#fff;border:0;border-radius:var(--r);font:500 15px/48px var(--font);cursor:pointer;transition:opacity .15s}
+button:hover{opacity:.92}
+button:disabled{opacity:.45;cursor:not-allowed}
+.status{margin-top:16px;font-size:14px;color:var(--ink-600);display:none}
+.status.show{display:block}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--navy);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes s{to{transform:rotate(360deg)}}
+.err{background:var(--neg-bg);color:var(--neg);border-radius:var(--r);padding:10px 14px;font-size:14px;margin-top:16px;display:none}
+.err.show{display:block}
+.results{margin-top:28px;display:none}
+.results.show{display:block}
+.seg{background:var(--white);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:12px}
+.seg .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);font-weight:500;margin-bottom:6px}
+.seg .v{font-size:14px;line-height:21px;color:var(--ink-900)}
+.meta{font-size:13px;color:var(--ink-400);margin:0 0 14px}
+.copy{background:#fff;color:var(--navy);border:1px solid var(--line);width:auto;padding:0 16px;line-height:38px;font-size:13px;margin:6px 0 0}
+pre{background:#0E0E2E;color:#D7D7F0;border-radius:var(--r);padding:16px;font-size:12.5px;line-height:19px;overflow:auto;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="badge">TEMPORARY TOOL</span>
+  <h1>MP4 → Gemini descriptions</h1>
+  <p class="sub">Upload an MP4 to get the same hook / segment breakdown the dashboard generates. Nothing is written to the database.</p>
+
+  <div class="card">
+    <div class="drop" id="drop">
+      <strong>Click to choose</strong> or drop an MP4 here
+      <p>Max ~200 MB · video/mp4</p>
+    </div>
+    <input type="file" id="file" accept="video/mp4,.mp4" hidden>
+    <div class="file" id="fileRow" style="display:none">
+      <span id="fileName"></span>
+      <span class="x" id="clear">remove</span>
+    </div>
+    <button id="go" disabled>Analyze video</button>
+    <div class="status" id="status"></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="results" id="results">
+    <p class="meta" id="meta"></p>
+    <div id="segs"></div>
+    <button class="copy" id="copyJson">Copy raw JSON</button>
+    <pre id="raw"></pre>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const drop=$('drop'), fileInput=$('file'), fileRow=$('fileRow'), fileName=$('fileName'),
+      clearBtn=$('clear'), go=$('go'), status=$('status'), err=$('err'),
+      results=$('results'), segs=$('segs'), raw=$('raw'), meta=$('meta'), copyJson=$('copyJson');
+let chosen=null;
+
+function setFile(f){
+  if(!f) return;
+  if(!/\.mp4$|video\/mp4/i.test(f.name+f.type)){ showErr('Please choose an MP4 file.'); return; }
+  chosen=f;
+  fileName.textContent = f.name + '  ·  ' + (f.size/1048576).toFixed(1) + ' MB';
+  fileRow.style.display='flex';
+  go.disabled=false;
+  hideErr();
+}
+function showErr(m){ err.textContent=m; err.classList.add('show'); }
+function hideErr(){ err.classList.remove('show'); }
+
+drop.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>setFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop', e=>setFile(e.dataTransfer.files[0]));
+clearBtn.addEventListener('click', ()=>{ chosen=null; fileInput.value=''; fileRow.style.display='none'; go.disabled=true; });
+
+go.addEventListener('click', async ()=>{
+  if(!chosen) return;
+  go.disabled=true; hideErr(); results.classList.remove('show');
+  status.classList.add('show');
+  status.innerHTML='<span class="spin"></span>Uploading & analyzing… this can take 20–60s for longer clips.';
+  try{
+    const res = await fetch('/api/describe-upload', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/octet-stream' },
+      body: chosen
+    });
+    const data = await res.json();
+    if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
+    render(data.analysis);
+  }catch(e){
+    showErr(e.message);
+  }finally{
+    status.classList.remove('show'); go.disabled=false;
+  }
+});
+
+function render(a){
+  const rows=[
+    ['Hook', a.hook],
+    ['Segment 1 · 0–25%', a.seg1],
+    ['Segment 2 · 25–50%', a.seg2],
+    ['Segment 3 · 50–75%', a.seg3],
+    ['Segment 4 · 75–100%', a.seg4],
+  ];
+  segs.innerHTML = rows.map(([k,v])=>
+    `<div class="seg"><div class="k">${k}</div><div class="v">${(v||'—')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')}</div></div>`).join('');
+  meta.textContent = a.duration!=null ? ('Gemini-estimated duration: '+a.duration+'s') : '';
+  raw.textContent = JSON.stringify(a, null, 2);
+  results.classList.add('show');
+  results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+copyJson.addEventListener('click', ()=>{
+  navigator.clipboard.writeText(raw.textContent);
+  copyJson.textContent='Copied ✓';
+  setTimeout(()=>copyJson.textContent='Copy raw JSON', 1500);
+});
+</script>
+</body>
+</html>
