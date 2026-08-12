@@ -41,26 +41,26 @@ function buildCreators() {
     if (!map[name]) map[name] = {
       name, profileUrl: (info && info.profileUrl) || null,
       assets: [], igViews: 0, ttViews: 0, fbViews: 0,
-      watch: [], hooks: [], holds: [],
+      watch: [], hooks: [], holds: [], engs: [], durations: [],
       spend: 0, paidAssets: 0,
       cqr: { Good: 0, Average: 0, Poor: 0 },
       orgCqr: { Good: 0, Average: 0, Poor: 0 },
       igCount: 0, ttCount: 0, fbCount: 0,
-      igEng: [], ttEng: []
     };
     const c = map[name];
     c.assets.push(d);
+    if (d.duration) c.durations.push(d.duration);
 
     if (d.igOrganic) {
       c.igViews += d.igOrganic.views || 0; c.igCount++;
       if (d.igOrganic.avgWatchTime > 0) c.watch.push(d.igOrganic.avgWatchTime);
-      if (d.igOrganic.engagementRate) c.igEng.push(d.igOrganic.engagementRate);
+      if (d.igOrganic.engagementRate) c.engs.push(d.igOrganic.engagementRate);
       if (c.orgCqr[d.igOrganic.cqr] !== undefined) c.orgCqr[d.igOrganic.cqr]++;
     }
     if (d.ttOrganic) {
       c.ttViews += d.ttOrganic.views || 0; c.ttCount++;
       if (d.ttOrganic.avgWatchTime > 0) c.watch.push(d.ttOrganic.avgWatchTime);
-      if (d.ttOrganic.engagementRate) c.ttEng.push(d.ttOrganic.engagementRate);
+      if (d.ttOrganic.engagementRate) c.engs.push(d.ttOrganic.engagementRate);
       if (c.orgCqr[d.ttOrganic.cqr] !== undefined) c.orgCqr[d.ttOrganic.cqr]++;
     }
     if (d.fbOrganic) {
@@ -93,10 +93,12 @@ function buildCreators() {
       avgWatch: mean(c.watch),
       avgHook: mean(c.hooks),
       avgHold: mean(c.holds),
-      avgIgEng: mean(c.igEng),
-      avgTtEng: mean(c.ttEng),
+      avgEng: mean(c.engs),
+      avgDuration: mean(c.durations),
       validRate,
-      costPerView: c.spend > 0 && totalViews > 0 ? c.spend / totalViews * 1000 : null,
+      igShare: totalViews ? c.igViews / totalViews * 100 : 0,
+      ttShare: totalViews ? c.ttViews / totalViews * 100 : 0,
+      fbShare: totalViews ? c.fbViews / totalViews * 100 : 0,
       platforms: [c.igCount ? 'IG' : '', c.ttCount ? 'TT' : '', c.fbCount ? 'FB' : ''].filter(Boolean)
     };
   });
@@ -129,7 +131,13 @@ function sortCreators(key) {
   renderCreatorTab();
 }
 
-function setCreatorSearch(v) { CREATOR_SEARCH = v; renderCreatorTab(); }
+function setCreatorSearch(v) {
+  CREATOR_SEARCH = v; renderCreatorTab();
+  // renderCreatorTab replaces the DOM, so the input loses focus on every
+  // keystroke unless it is restored with the caret at the end.
+  const el = document.getElementById('cr-search');
+  if (el) { el.focus(); el.setSelectionRange(v.length, v.length); }
+}
 function setCreatorMinVideos(v) { CREATOR_MIN_VIDEOS = parseInt(v) || 1; renderCreatorTab(); }
 function setCreatorPlatform(v) { CREATOR_PLATFORM = v; renderCreatorTab(); }
 
@@ -191,24 +199,22 @@ function renderCreatorTab() {
       </div>
     </div>
 
-    <div class="grid-header">
-      <div class="grid-header-title">${list.length} of ${all.length} creators</div>
-      <div class="filters" style="flex:0 1 auto;margin-top:0">
-        <input class="search-input" placeholder="Search creator..."
-               value="${CREATOR_SEARCH}" oninput="setCreatorSearch(this.value)">
-        <select onchange="setCreatorPlatform(this.value)">
-          <option value="all"${CREATOR_PLATFORM === 'all' ? ' selected' : ''}>All platforms</option>
-          <option value="IG"${CREATOR_PLATFORM === 'IG' ? ' selected' : ''}>Instagram</option>
-          <option value="TT"${CREATOR_PLATFORM === 'TT' ? ' selected' : ''}>TikTok</option>
-          <option value="FB"${CREATOR_PLATFORM === 'FB' ? ' selected' : ''}>Facebook</option>
-        </select>
-        <select onchange="setCreatorMinVideos(this.value)">
-          <option value="1"${CREATOR_MIN_VIDEOS === 1 ? ' selected' : ''}>All creators</option>
-          <option value="2"${CREATOR_MIN_VIDEOS === 2 ? ' selected' : ''}>2+ assets</option>
-          <option value="3"${CREATOR_MIN_VIDEOS === 3 ? ' selected' : ''}>3+ assets</option>
-          <option value="5"${CREATOR_MIN_VIDEOS === 5 ? ' selected' : ''}>5+ assets</option>
-        </select>
-      </div>
+    <div class="cr-toolbar">
+      <input id="cr-search" class="search-input" placeholder="Search creator..."
+             value="${CREATOR_SEARCH}" oninput="setCreatorSearch(this.value)">
+      <select onchange="setCreatorPlatform(this.value)">
+        <option value="all"${CREATOR_PLATFORM === 'all' ? ' selected' : ''}>All platforms</option>
+        <option value="IG"${CREATOR_PLATFORM === 'IG' ? ' selected' : ''}>Instagram</option>
+        <option value="TT"${CREATOR_PLATFORM === 'TT' ? ' selected' : ''}>TikTok</option>
+        <option value="FB"${CREATOR_PLATFORM === 'FB' ? ' selected' : ''}>Facebook</option>
+      </select>
+      <select onchange="setCreatorMinVideos(this.value)">
+        <option value="1"${CREATOR_MIN_VIDEOS === 1 ? ' selected' : ''}>All creators</option>
+        <option value="2"${CREATOR_MIN_VIDEOS === 2 ? ' selected' : ''}>2+ assets</option>
+        <option value="3"${CREATOR_MIN_VIDEOS === 3 ? ' selected' : ''}>3+ assets</option>
+        <option value="5"${CREATOR_MIN_VIDEOS === 5 ? ' selected' : ''}>5+ assets</option>
+      </select>
+      <span class="cr-count">${list.length} of ${all.length} creators</span>
     </div>
 
     <div class="chart-box" style="padding:0;overflow-x:auto">
@@ -217,11 +223,12 @@ function renderCreatorTab() {
           ${th('name','Creator')}
           ${th('videos','Assets','70px')}
           ${th('totalViews','Total Views','150px')}
-          ${th('avgViews','Avg / Asset','100px')}
+          ${th('avgEng','Eng Rate','90px')}
           ${th('avgWatch','Avg Watch','90px')}
           ${th('avgHook','Hook Rate','90px')}
+          ${th('avgDuration','Length','80px')}
           ${th('validRate','Validated','150px')}
-          <th style="width:80px">Platforms</th>
+          <th style="width:120px">Platform mix</th>
         </tr></thead>
         <tbody>
           ${list.map(c => {
@@ -243,9 +250,10 @@ function renderCreatorTab() {
                   <span>${fmtN(c.totalViews)}</span>
                 </div>
               </td>
-              <td>${fmtN(Math.round(c.avgViews))}</td>
+              <td>${c.avgEng > 0 ? c.avgEng.toFixed(2) + '%' : '—'}</td>
               <td>${c.avgWatch > 0 ? c.avgWatch.toFixed(1) + 's' : '—'}</td>
               <td>${c.avgHook > 0 ? c.avgHook.toFixed(1) + '%' : '—'}</td>
+              <td>${c.avgDuration > 0 ? Math.round(c.avgDuration) + 's' : '—'}</td>
               <td>
                 ${g + a + p > 0 ? `
                   <div style="display:flex;height:4px;border-radius:2px;overflow:hidden;min-width:60px">
@@ -257,7 +265,14 @@ function renderCreatorTab() {
                     ${g}G / ${a}A / ${p}P
                   </div>` : '<span class="kpi-muted">Not scored</span>'}
               </td>
-              <td>${c.platforms.map(pl => `<span class="tag-duration">${pl}</span>`).join(' ')}</td>
+              <td>
+                <div style="display:flex;height:4px;border-radius:2px;overflow:hidden">
+                  ${c.igShare ? `<div style="flex:${c.igShare};background:var(--navy)"></div>` : ''}
+                  ${c.ttShare ? `<div style="flex:${c.ttShare};background:var(--violet)"></div>` : ''}
+                  ${c.fbShare ? `<div style="flex:${c.fbShare};background:var(--violet-400)"></div>` : ''}
+                </div>
+                <div style="font:500 11px var(--font-mono);color:var(--ink-400);margin-top:4px">${c.platforms.join(' ')}</div>
+              </td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -266,77 +281,149 @@ function renderCreatorTab() {
 
     <div class="charts-row" style="margin-top:24px">
       <div class="chart-box">
-        <div class="chart-box-title">Platform split — views per creator</div>
-        <div class="chart-container" style="height:260px"><canvas id="cr-platform"></canvas></div>
+        <div class="chart-box-title">Hook rate vs engagement rate</div>
+        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
+          Top right stops the scroll and gets acted on. Bottom right buys attention but no response.
+        </div>
+        <div class="chart-container" style="height:280px"><canvas id="cr-quadrant"></canvas></div>
       </div>
       <div class="chart-box">
-        <div class="chart-box-title">Consistency — assets vs validation rate</div>
-        <div class="chart-container" style="height:260px"><canvas id="cr-consistency"></canvas></div>
+        <div class="chart-box-title">Platform mix — share of each creator's views</div>
+        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
+          Which platform a creator owns, independent of how big they are.
+        </div>
+        <div class="chart-container" style="height:280px"><canvas id="cr-mix"></canvas></div>
+      </div>
+    </div>
+
+    <div class="charts-row" style="margin-top:16px">
+      <div class="chart-box">
+        <div class="chart-box-title">Asset length vs hook rate</div>
+        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
+          Plotted per asset, not per creator — an average hides a 60s asset sitting next to a 15s one.
+        </div>
+        <div class="chart-container" style="height:240px"><canvas id="cr-duration"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-box-title">Creator vs Brand Say</div>
+        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
+          Creator content against owned content on the same measures.
+        </div>
+        <div class="chart-container" style="height:240px"><canvas id="cr-vs-brand"></canvas></div>
       </div>
     </div>
 
   </div>`;
 
-  drawCreatorCharts(list);
+  drawCreatorCharts(list, all);
 }
 
 // ---------------------------------------------------------------------
 //  Charts. Two, both answering questions the table cannot.
 // ---------------------------------------------------------------------
-let crPlatformChart = null, crConsistChart = null;
+let crQuadrant = null, crMix = null, crDuration = null, crVsBrand = null;
 
-function drawCreatorCharts(list) {
-  if (crPlatformChart) crPlatformChart.destroy();
-  if (crConsistChart)  crConsistChart.destroy();
-
+function drawCreatorCharts(list, all) {
+  [crQuadrant, crMix, crDuration, crVsBrand].forEach(c => { if (c) c.destroy(); });
   const grid = '#E6E8F0', tick = '#6B7196';
-  const top = list.slice(0, 10);
 
-  crPlatformChart = new Chart(document.getElementById('cr-platform'), {
+  // 1. Hook vs engagement.
+  //    The old assets-vs-validation scatter needed repeat work to say
+  //    anything; with one asset per creator it was a vertical line.
+  //    This works from a single asset and answers a booking decision.
+  const q = list.filter(c => c.avgHook > 0 && c.avgEng > 0);
+  crQuadrant = new Chart(document.getElementById('cr-quadrant'), {
+    type: 'scatter',
+    data: { datasets: [{
+      data: q.map(c => ({ x: c.avgHook, y: c.avgEng, name: c.name })),
+      backgroundColor: '#31117C', pointRadius: 6, pointHoverRadius: 9
+    }]},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: ctx => `${ctx.raw.name}: hook ${ctx.raw.x.toFixed(1)}%, eng ${ctx.raw.y.toFixed(2)}%` } } },
+      scales: {
+        x: { title: { display: true, text: 'Hook rate %', color: tick, font: { size: 11 } },
+             grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } },
+        y: { title: { display: true, text: 'Engagement rate %', color: tick, font: { size: 11 } },
+             grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } }
+      }
+    }
+  });
+
+  // 2. Platform mix as share. Absolute views only re-ranked the table's
+  //    own Views column and was dominated by whoever had most reach.
+  const top = list.slice(0, 12);
+  crMix = new Chart(document.getElementById('cr-mix'), {
     type: 'bar',
     data: {
       labels: top.map(c => c.name.length > 14 ? c.name.slice(0, 12) + '…' : c.name),
       datasets: [
-        { label: 'Instagram', data: top.map(c => c.igViews), backgroundColor: '#000050' },
-        { label: 'TikTok',    data: top.map(c => c.ttViews), backgroundColor: '#31117C' },
-        { label: 'Facebook',  data: top.map(c => c.fbViews), backgroundColor: '#6E5BD6' }
+        { label: 'Instagram', data: top.map(c => c.igShare), backgroundColor: '#000050' },
+        { label: 'TikTok',    data: top.map(c => c.ttShare), backgroundColor: '#31117C' },
+        { label: 'Facebook',  data: top.map(c => c.fbShare), backgroundColor: '#6E5BD6' }
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: tick, font: { size: 11 }, boxWidth: 10 } },
+                 tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toFixed(0)}%` } } },
+      scales: {
+        x: { stacked: true, max: 100, grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } },
+        y: { stacked: true, grid: { display: false }, ticks: { color: tick, font: { size: 10 } } }
+      }
+    }
+  });
+
+  // 3. Duration vs hook, per asset.
+  const assets = [];
+  all.forEach(c => c.assets.forEach(a => {
+    if (a.duration > 0 && a.hookRate > 0) assets.push({ x: a.duration, y: a.hookRate, name: c.name });
+  }));
+  crDuration = new Chart(document.getElementById('cr-duration'), {
+    type: 'scatter',
+    data: { datasets: [{ data: assets, backgroundColor: '#6E5BD6', pointRadius: 5 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: ctx => `${ctx.raw.name}: ${ctx.raw.x}s, hook ${ctx.raw.y.toFixed(1)}%` } } },
+      scales: {
+        x: { title: { display: true, text: 'Asset length (s)', color: tick, font: { size: 11 } },
+             beginAtZero: true, grid: { color: grid }, ticks: { color: tick } },
+        y: { title: { display: true, text: 'Hook rate %', color: tick, font: { size: 11 } },
+             beginAtZero: true, grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } }
+      }
+    }
+  });
+
+  // 4. Creator vs owned content. "43% hook rate" only means something
+  //    next to what your own content achieves.
+  const bs = (typeof ALL !== 'undefined' ? ALL : []).filter(d => d.type === 'Brand Say');
+  const mean = (arr, f) => { const v = arr.map(f).filter(n => n > 0); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 0; };
+  const crAssets = [];
+  all.forEach(c => c.assets.forEach(a => crAssets.push(a)));
+
+  crVsBrand = new Chart(document.getElementById('cr-vs-brand'), {
+    type: 'bar',
+    data: {
+      labels: ['Hook rate %', 'Hold rate %', 'Avg watch (s)'],
+      datasets: [
+        { label: 'Creator', data: [
+            mean(crAssets, d => d.hookRate), mean(crAssets, d => d.holdRate),
+            mean(all.flatMap(c => c.watch), v => v)
+          ], backgroundColor: '#31117C' },
+        { label: 'Brand Say', data: [
+            mean(bs, d => d.hookRate), mean(bs, d => d.holdRate),
+            mean(bs, d => ((d.igOrganic && d.igOrganic.avgWatchTime) || (d.ttOrganic && d.ttOrganic.avgWatchTime) || 0))
+          ], backgroundColor: '#A3A8C2' }
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { labels: { color: tick, font: { size: 11 }, boxWidth: 10 } } },
       scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { color: tick, font: { size: 10 } } },
-        y: { stacked: true, grid: { color: grid }, ticks: { color: tick, callback: v => fmtN(v) } }
-      }
-    }
-  });
-
-  // Volume on one axis, validation rate on the other. Top-right is a
-  // creator worth renewing; bottom-right is volume without quality.
-  const pts = list.filter(c => c.validRate !== null);
-  crConsistChart = new Chart(document.getElementById('cr-consistency'), {
-    type: 'scatter',
-    data: {
-      datasets: [{
-        label: 'Creators',
-        data: pts.map(c => ({ x: c.videos, y: c.validRate, name: c.name })),
-        backgroundColor: '#31117C', pointRadius: 6, pointHoverRadius: 8
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: {
-          label: ctx => `${ctx.raw.name}: ${ctx.raw.x} assets, ${ctx.raw.y.toFixed(0)}% validated`
-        }}
-      },
-      scales: {
-        x: { title: { display: true, text: 'Assets produced', color: tick, font: { size: 11 } },
-             beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
-        y: { title: { display: true, text: '% validated', color: tick, font: { size: 11 } },
-             min: 0, max: 100, grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } }
+        x: { grid: { display: false }, ticks: { color: tick, font: { size: 11 } } },
+        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick } }
       }
     }
   });
