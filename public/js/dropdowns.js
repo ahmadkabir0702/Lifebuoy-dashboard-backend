@@ -144,6 +144,7 @@
     opts = opts || {};
     if (!select || select.dataset.ddDone) return;
     select.dataset.ddDone = '1';
+    select.setAttribute('data-dd-done', '1');
 
     const wrap = document.createElement('div');
     wrap.className = 'dd dd-filter';
@@ -229,6 +230,21 @@
     select.dataset.ddRepaint = '1';
     wrap._ddRepaint = () => { paintButton(); paintMenu(); };
   }
+
+  // Public: enhance any single <select>. Used by the KPI tab and the modals,
+  // which build their selects at render time rather than in index.html.
+  window.enhanceSelect = function (el, opts) {
+    if (typeof el === 'string') el = document.getElementById(el);
+    enhance(el, opts || {});
+  };
+
+  // Enhance every select in a container that has not been done yet.
+  window.enhanceSelectsIn = function (root, opts) {
+    if (typeof root === 'string') root = document.getElementById(root);
+    if (!root) return;
+    root.querySelectorAll('select:not([data-dd-done]):not(.dd-native)')
+        .forEach(s => enhance(s, opts || {}));
+  };
 
   window.enhanceFilterDropdowns = function () {
     // No inline caption here: every one of these sits under its own <label>
