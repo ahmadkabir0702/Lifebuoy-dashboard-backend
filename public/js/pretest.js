@@ -15,6 +15,7 @@
   window.openPretestModal = function() {
     resetPretestModal();
     document.getElementById('pretestModal').classList.add('open');
+    if (typeof enhanceSelectsIn === 'function') enhanceSelectsIn('pretestModal');
   };
 
   window.closePretestModal = function() {
