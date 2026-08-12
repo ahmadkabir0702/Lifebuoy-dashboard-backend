@@ -120,7 +120,7 @@ function renderKPIFilters() {
 
   const pillGroup = (key, values, labels) => `
     <div class="kfi-group">
-      <span class="kfi-label">${key === 'campaign' ? 'Campaign' : key === 'month' ? 'Month' : 'Content Type'}</span>
+      <span class="kfi-label">${key === 'campaign' ? 'Campaign' : key === 'month' ? 'Month' : 'Content type'}</span>
       <div class="kfi-pills">
         ${values.map((v, i) => `
           <button class="kfi-pill ${kpiFilters[key] === v ? 'kfi-active' : ''}"
@@ -136,7 +136,7 @@ function renderKPIFilters() {
   const selectGroup = (key, values, label, allLabel) => `
     <div class="kfi-group">
       <span class="kfi-label">${label}</span>
-      <select class="kfi-select" onchange="applyKpiFilter('${key}', this.value)">
+      <select class="kfi-select" id="kfi-${key}" onchange="applyKpiFilter('${key}', this.value)">
         ${values.map(v => `
           <option value="${v}"${kpiFilters[key] === v ? ' selected' : ''}>
             ${v === 'all' ? allLabel : v}
@@ -148,6 +148,10 @@ function renderKPIFilters() {
     selectGroup('campaign', campaigns, 'Campaign', 'All campaigns') +
     pillGroup('month',    months) +
     pillGroup('type',     types);
+
+  // The bar is rebuilt from scratch on every render, so the select is a new
+  // element each time and has to be re-enhanced.
+  if (typeof enhanceSelectsIn === 'function') enhanceSelectsIn(wrap);
 }
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function renderKPIShell(page) {
