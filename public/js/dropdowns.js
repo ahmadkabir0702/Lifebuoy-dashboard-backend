@@ -28,15 +28,47 @@
     return (w.length > 1 ? w[0][0] + w[1][0] : (w[0] || '?').slice(0, 2)).toUpperCase();
   }
 
+  // Logo lookup tries several conventions before giving up, so files can sit
+  // in /img or /img/brands and be named "Lifebuoy.svg" or "lifebuoy.svg".
+  // First one that loads wins; if none do, the monogram shows.
+  function logoCandidates(name) {
+    const raw  = String(name || '').trim();
+    const slug = brandSlug(raw);
+    const out  = [];
+    ['/img/', '/img/brands/'].forEach(dir => {
+      [raw, slug].forEach(base => {
+        if (!base) return;
+        ['svg', 'png', 'webp', 'jpg'].forEach(ext => {
+          const url = dir + encodeURIComponent(base) + '.' + ext;
+          if (out.indexOf(url) === -1) out.push(url);
+        });
+      });
+    });
+    return out;
+  }
+
   function brandMark(name, cls) {
-    const slug = brandSlug(name);
-    // The img removes itself if the file is absent, leaving the monogram.
-    // parentNode is captured before removal — reading it after throws.
+    const list = logoCandidates(name);
     return `<span class="dd-mark ${cls || ''}" data-mono="${esc(monogram(name))}">
-      <img src="/img/brands/${slug}.svg" alt=""
-           onerror="var p=this.parentNode;if(p){p.classList.add('dd-mark-mono');}this.remove();">
+      <img src="${list[0]}" alt="" data-try="0"
+           data-list="${esc(list.join('|'))}"
+           onerror="window.__ddLogoFallback&&window.__ddLogoFallback(this)">
     </span>`;
   }
+
+  // Step through the candidates on each 404, then fall back to the monogram.
+  window.__ddLogoFallback = function (img) {
+    const list = (img.getAttribute('data-list') || '').split('|').filter(Boolean);
+    const i = parseInt(img.getAttribute('data-try') || '0', 10) + 1;
+    if (i < list.length) {
+      img.setAttribute('data-try', String(i));
+      img.src = list[i];
+      return;
+    }
+    const p = img.parentNode;
+    if (p) p.classList.add('dd-mark-mono');
+    img.remove();
+  };
 
   // ── Shared open/close ──────────────────────────────────────────────────────
   function closeAll(except) {
