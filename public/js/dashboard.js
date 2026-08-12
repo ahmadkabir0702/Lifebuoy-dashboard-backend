@@ -27,6 +27,7 @@ async function loadBrands() {
       .map(b => `<option value="${b.brand_id}"${b.brand_id === active ? ' selected' : ''}>${b.name}</option>`)
       .join('');
     if (brands.length < 2) sel.style.pointerEvents = 'none';
+    if (typeof renderBrandSwitcher === 'function') renderBrandSwitcher(brands, active);
   } catch (e) { console.error('loadBrands', e); }
 }
 
@@ -137,6 +138,8 @@ async function loadData() {
       document.getElementById('card-grid').innerHTML = '';
       document.getElementById('grid-count').textContent = '0 creatives';
       populateFilters();
+      if (typeof enhanceFilterDropdowns === 'function') enhanceFilterDropdowns();
+      if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
       isLoading = false;
       // The KPI tab keeps its skeleton unless we clear it here — the empty
       // path returns before render(), so renderKpiTab never runs.
@@ -146,6 +149,9 @@ async function loadData() {
       return;
     }
     populateFilters();
+    if (typeof enhanceFilterDropdowns === 'function') enhanceFilterDropdowns();
+    if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
+    if (typeof syncFilterPills === 'function') syncFilterPills();
     render();
   } catch(err) {
     document.getElementById('kpi-row').innerHTML =
