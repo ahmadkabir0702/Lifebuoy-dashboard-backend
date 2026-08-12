@@ -581,3 +581,97 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
   .lin-row{grid-template-columns:1fr;gap:3px}
   .lin-meta,.lin-metric{white-space:normal}
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Dropdowns — brand switcher (identity) + filter listboxes
+   The native <select> stays in the DOM as the source of truth; these
+   rules hide it and style the control drawn on top.
+   ═══════════════════════════════════════════════════════════════════ */
+.dd{position:relative;display:inline-block;font-family:var(--font)}
+.dd-native{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.dd-chev{color:var(--ink-400);flex:none;transition:transform .15s var(--ease)}
+.dd.open .dd-chev{transform:rotate(180deg)}
+.dd-tick{width:15px;height:15px;color:var(--navy);flex:none;opacity:0;margin-left:auto}
+.dd-item.on .dd-tick{opacity:1}
+
+/* ---- menus ---- */
+.dd-menu{
+  display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:80;
+  min-width:100%;width:max-content;max-width:320px;
+  background:var(--white);border-radius:var(--r-card);box-shadow:var(--shadow-pop);padding:6px;
+}
+.dd.open .dd-menu{display:block}
+.dd-menu-brand{min-width:250px}
+.dd-list{max-height:288px;overflow-y:auto}
+.dd-cap{font:400 12px/16px var(--font);color:var(--ink-400);padding:8px 10px 5px}
+.dd-search{
+  width:100%;height:34px;margin-bottom:4px;padding:0 10px;
+  border:1px solid var(--line-soft);border-radius:var(--r-btn);
+  background:var(--canvas-2);font:400 13.5px var(--font);color:var(--ink-900);
+}
+.dd-search:focus{outline:none;border-color:var(--line);background:var(--white)}
+
+.dd-item{
+  display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;
+  border:0;background:none;border-radius:var(--r-btn);text-align:left;
+  font:400 14px/20px var(--font);color:var(--ink-900);cursor:pointer;
+}
+.dd-item:hover{background:var(--canvas-2)}
+.dd-item.on{background:var(--sel);font-weight:500}
+.dd-item:focus-visible{outline:none;box-shadow:0 0 0 2px rgba(0,0,80,.35) inset}
+.dd-item-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- filter control ---- */
+.dd-btn{
+  display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 11px;
+  background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);
+  font:400 14px var(--font);color:var(--ink-900);cursor:pointer;max-width:260px;
+  transition:border-color .15s var(--ease),background-color .15s var(--ease);
+}
+.dd-btn:hover{border-color:#BFC3D4}
+.dd.open .dd-btn{border-color:var(--navy);box-shadow:0 0 0 3px rgba(0,0,80,.10)}
+.dd-btn:focus-visible{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(0,0,80,.18)}
+.dd-cap-inline{font-size:12.5px;color:var(--ink-400);flex:none}
+.dd-val{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dd-set .dd-btn{background:var(--sel);border-color:var(--sel-line)}
+.dd-set .dd-val{font-weight:500}
+.dd-set .dd-cap-inline{color:var(--ink-600)}
+
+/* ---- brand switcher ---- */
+.dd-brand-btn{
+  display:inline-flex;align-items:center;gap:10px;height:40px;padding:0 11px 0 7px;
+  background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);
+  cursor:pointer;font-family:var(--font);
+  transition:border-color .15s var(--ease);
+}
+.dd-brand-btn:hover{border-color:#BFC3D4}
+.dd.open .dd-brand-btn{border-color:var(--navy);box-shadow:0 0 0 3px rgba(0,0,80,.10)}
+.dd-brand-btn:focus-visible{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(0,0,80,.18)}
+.dd-static .dd-brand-btn{cursor:default}
+.dd-static .dd-brand-btn:hover{border-color:var(--line)}
+
+.dd-mark{
+  width:28px;height:28px;border-radius:5px;flex:none;overflow:hidden;
+  display:grid;place-items:center;background:var(--canvas-2);
+}
+.dd-mark img{width:100%;height:100%;object-fit:contain;display:block}
+.dd-mark-sm{width:24px;height:24px}
+/* Fallback when /img/brands/<slug>.svg is missing */
+.dd-mark-mono{background:var(--navy)}
+.dd-mark-mono::after{
+  content:attr(data-mono);color:#fff;font:500 11px/1 var(--font);letter-spacing:.02em;
+}
+.dd-mark-sm.dd-mark-mono::after{font-size:10px}
+
+.dd-brand-txt{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;min-width:0}
+.dd-brand-name{font:500 14px var(--font);color:var(--ink-900);white-space:nowrap}
+.dd-brand-sub{font:400 11.5px var(--font);color:var(--ink-400);white-space:nowrap}
+.dd-item-brand{padding:7px 10px}
+.dd-item-brand .dd-brand-name{font-weight:400}
+.dd-item-brand.on .dd-brand-name{font-weight:500}
+
+@media (max-width:768px){
+  .dd-btn{max-width:100%}
+  .dd-menu{max-width:calc(100vw - 32px)}
+}
