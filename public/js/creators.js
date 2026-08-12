@@ -18,7 +18,9 @@
      confident zero is worse than an honest gap.
    ===================================================================== */
 
-let CREATOR_SORT = { key: 'totalViews', dir: 'desc' };
+// Default sort is quality, not reach. Ranking creators by views rewards
+// whoever got the most impressions rather than whoever made the best work.
+let CREATOR_SORT = { key: 'goodShare', dir: 'desc' };
 let CREATOR_SEARCH = '';
 let CREATOR_MIN_VIDEOS = 1;
 let CREATOR_PLATFORM = 'all';
@@ -47,7 +49,7 @@ function buildCreators() {
     if (!map[name]) map[name] = {
       name, profileUrl: (info && info.profileUrl) || null,
       assets: [], igViews: 0, ttViews: 0, fbViews: 0,
-      watch: [], hooks: [], holds: [], engs: [], durations: [],
+      watch: [], hooks: [], holds: [], durations: [],
       spend: 0, paidAssets: 0,
       cqr: { Good: 0, Average: 0, Poor: 0 },
       orgCqr: { Good: 0, Average: 0, Poor: 0 },
@@ -60,13 +62,11 @@ function buildCreators() {
     if (d.igOrganic) {
       c.igViews += d.igOrganic.views || 0; c.igCount++;
       if (d.igOrganic.avgWatchTime > 0) c.watch.push(d.igOrganic.avgWatchTime);
-      if (d.igOrganic.engagementRate) c.engs.push(d.igOrganic.engagementRate);
       if (c.orgCqr[d.igOrganic.cqr] !== undefined) c.orgCqr[d.igOrganic.cqr]++;
     }
     if (d.ttOrganic) {
       c.ttViews += d.ttOrganic.views || 0; c.ttCount++;
       if (d.ttOrganic.avgWatchTime > 0) c.watch.push(d.ttOrganic.avgWatchTime);
-      if (d.ttOrganic.engagementRate) c.engs.push(d.ttOrganic.engagementRate);
       if (c.orgCqr[d.ttOrganic.cqr] !== undefined) c.orgCqr[d.ttOrganic.cqr]++;
     }
     if (d.fbOrganic) {
@@ -99,7 +99,12 @@ function buildCreators() {
       avgWatch: mean(c.watch),
       avgHook: mean(c.hooks),
       avgHold: mean(c.holds),
-      avgEng: mean(c.engs),
+      // Share of scored organic posts rating Good. CQR is the composite
+      // of both signals, so it is the right primary measure — engagement
+      // rate alone is stored as a raw weighted ratio for Others Say and
+      // is not comparable with Brand Say's plain rate.
+      goodShare: scored ? c.orgCqr.Good / scored * 100 : null,
+      scoredPosts: scored,
       avgDuration: mean(c.durations),
       validRate,
       igShare: totalViews ? c.igViews / totalViews * 100 : 0,
@@ -250,7 +255,7 @@ function renderCreatorTab() {
           ${th('name','Creator')}
           ${th('videos','Assets','70px')}
           ${th('totalViews','Total Views','150px')}
-          ${th('avgEng','Eng Rate','90px')}
+          ${th('goodShare','Quality','90px')}
           ${th('avgWatch','Avg Watch','90px')}
           ${th('avgHook','Hook Rate','90px')}
           ${th('avgDuration','Length','80px')}
@@ -277,7 +282,9 @@ function renderCreatorTab() {
                   <span>${fmtN(c.totalViews)}</span>
                 </div>
               </td>
-              <td>${c.avgEng > 0 ? c.avgEng.toFixed(2) + '%' : '—'}</td>
+              <td>${c.goodShare !== null
+                ? `<span style="color:${c.goodShare >= 60 ? 'var(--pos-ink)' : c.goodShare >= 30 ? 'var(--warn-ink)' : 'var(--neg-ink)'}">${c.goodShare.toFixed(0)}% Good</span>`
+                : '<span class="kpi-muted">—</span>'}</td>
               <td>${c.avgWatch > 0 ? c.avgWatch.toFixed(1) + 's' : '—'}</td>
               <td>${c.avgHook > 0 ? c.avgHook.toFixed(1) + '%' : '—'}</td>
               <td>${c.avgDuration > 0 ? Math.round(c.avgDuration) + 's' : '—'}</td>
@@ -308,33 +315,54 @@ function renderCreatorTab() {
 
     <div class="charts-row" style="margin-top:24px">
       <div class="chart-box">
-        <div class="chart-box-title">Hook rate vs engagement rate</div>
-        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
-          Top right stops the scroll and gets acted on. Bottom right buys attention but no response.
+        <div class="chart-box-title">Creative quality by creator</div>
+        <div class="cr-note">
+          Organic CQR per creator, sorted by share of Good. CQR combines both
+          signals, so it says more than either rate on its own.
         </div>
-        <div class="chart-container" style="height:280px"><canvas id="cr-quadrant"></canvas></div>
+        <div class="chart-container" style="height:300px"><canvas id="cr-cqr"></canvas></div>
       </div>
       <div class="chart-box">
         <div class="chart-box-title">Platform mix — share of each creator's views</div>
-        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
+        <div class="cr-note">
           Which platform a creator owns, independent of how big they are.
         </div>
-        <div class="chart-container" style="height:280px"><canvas id="cr-mix"></canvas></div>
+        <div class="chart-container" style="height:300px"><canvas id="cr-mix"></canvas></div>
       </div>
     </div>
 
     <div class="charts-row" style="margin-top:16px">
       <div class="chart-box">
-        <div class="chart-box-title">Asset length vs hook rate</div>
-        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
-          Plotted per asset, not per creator — an average hides a 60s asset sitting next to a 15s one.
+        <div class="chart-box-title">Hook rate by creator</div>
+        <div class="cr-note">
+          Whether the opening stops the scroll. Bar colour is against the
+          paid benchmark for the platform the asset ran on.
+        </div>
+        <div class="chart-container" style="height:260px"><canvas id="cr-hook"></canvas></div>
+      </div>
+      <div class="chart-box">
+        <div class="chart-box-title">Hold rate by creator</div>
+        <div class="cr-note">
+          Whether the asset keeps them once hooked. A creator strong here
+          but weak on hook needs a recut, not replacing.
+        </div>
+        <div class="chart-container" style="height:260px"><canvas id="cr-hold"></canvas></div>
+      </div>
+    </div>
+
+    <div class="charts-row" style="margin-top:16px">
+      <div class="chart-box">
+        <div class="chart-box-title">Asset length vs quality</div>
+        <div class="cr-note">
+          Each point is one asset. Shows whether shorter creator content
+          scores better for this brand.
         </div>
         <div class="chart-container" style="height:240px"><canvas id="cr-duration"></canvas></div>
       </div>
       <div class="chart-box">
         <div class="chart-box-title">Creator vs Brand Say</div>
-        <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin:-8px 0 12px">
-          Creator content against owned content on the same measures.
+        <div class="cr-note">
+          Organic CQR mix, creator content against owned content.
         </div>
         <div class="chart-container" style="height:240px"><canvas id="cr-vs-brand"></canvas></div>
       </div>
@@ -348,43 +376,50 @@ function renderCreatorTab() {
 // ---------------------------------------------------------------------
 //  Charts. Two, both answering questions the table cannot.
 // ---------------------------------------------------------------------
-let crQuadrant = null, crMix = null, crDuration = null, crVsBrand = null;
+let crCqr = null, crMix = null, crHook = null, crHold = null,
+    crDuration = null, crVsBrand = null;
+
+const CR_GOOD = '#04785C', CR_AVG = '#8A5A12', CR_POOR = '#A32040';
+const CR_GRID = '#E6E8F0', CR_TICK = '#6B7196';
 
 function drawCreatorCharts(list, all) {
-  [crQuadrant, crMix, crDuration, crVsBrand].forEach(c => { if (c) c.destroy(); });
-  const grid = '#E6E8F0', tick = '#6B7196';
+  [crCqr, crMix, crHook, crHold, crDuration, crVsBrand]
+    .forEach(c => { if (c) c.destroy(); });
 
-  // 1. Hook vs engagement.
-  //    The old assets-vs-validation scatter needed repeat work to say
-  //    anything; with one asset per creator it was a vertical line.
-  //    This works from a single asset and answers a booking decision.
-  const q = list.filter(c => c.avgHook > 0 && c.avgEng > 0);
-  crQuadrant = new Chart(document.getElementById('cr-quadrant'), {
-    type: 'scatter',
-    data: { datasets: [{
-      data: q.map(c => ({ x: c.avgHook, y: c.avgEng, name: c.name })),
-      backgroundColor: '#31117C', pointRadius: 6, pointHoverRadius: 9
-    }]},
+  const short = n => n.length > 14 ? n.slice(0, 12) + '…' : n;
+
+  // 1. CQR mix per creator — the primary view. Sorted by share of Good
+  //    rather than volume, so the top of the chart is the best work.
+  const q = [...list].filter(c => c.scoredPosts > 0)
+    .sort((a, b) => (b.goodShare ?? -1) - (a.goodShare ?? -1)).slice(0, 12);
+  crCqr = new Chart(document.getElementById('cr-cqr'), {
+    type: 'bar',
+    data: {
+      labels: q.map(c => short(c.name)),
+      datasets: [
+        { label: 'Good',    data: q.map(c => c.orgCqr.Good),    backgroundColor: CR_GOOD },
+        { label: 'Average', data: q.map(c => c.orgCqr.Average), backgroundColor: CR_AVG },
+        { label: 'Poor',    data: q.map(c => c.orgCqr.Poor),    backgroundColor: CR_POOR }
+      ]
+    },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: {
-        label: ctx => `${ctx.raw.name}: hook ${ctx.raw.x.toFixed(1)}%, eng ${ctx.raw.y.toFixed(2)}%` } } },
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: CR_TICK, font: { size: 11 }, boxWidth: 10 } },
+                 tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw} post${ctx.raw === 1 ? '' : 's'}` } } },
       scales: {
-        x: { title: { display: true, text: 'Hook rate %', color: tick, font: { size: 11 } },
-             grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } },
-        y: { title: { display: true, text: 'Engagement rate %', color: tick, font: { size: 11 } },
-             grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } }
+        x: { stacked: true, beginAtZero: true, grid: { color: CR_GRID },
+             ticks: { color: CR_TICK, precision: 0 } },
+        y: { stacked: true, grid: { display: false }, ticks: { color: CR_TICK, font: { size: 10 } } }
       }
     }
   });
 
-  // 2. Platform mix as share. Absolute views only re-ranked the table's
-  //    own Views column and was dominated by whoever had most reach.
+  // 2. Platform mix, as share
   const top = list.slice(0, 12);
   crMix = new Chart(document.getElementById('cr-mix'), {
     type: 'bar',
     data: {
-      labels: top.map(c => c.name.length > 14 ? c.name.slice(0, 12) + '…' : c.name),
+      labels: top.map(c => short(c.name)),
       datasets: [
         { label: 'Instagram', data: top.map(c => c.igShare), backgroundColor: '#000050' },
         { label: 'TikTok',    data: top.map(c => c.ttShare), backgroundColor: '#31117C' },
@@ -393,64 +428,107 @@ function drawCreatorCharts(list, all) {
     },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: tick, font: { size: 11 }, boxWidth: 10 } },
+      plugins: { legend: { labels: { color: CR_TICK, font: { size: 11 }, boxWidth: 10 } },
                  tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.toFixed(0)}%` } } },
       scales: {
-        x: { stacked: true, max: 100, grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } },
-        y: { stacked: true, grid: { display: false }, ticks: { color: tick, font: { size: 10 } } }
+        x: { stacked: true, max: 100, grid: { color: CR_GRID },
+             ticks: { color: CR_TICK, callback: v => v + '%' } },
+        y: { stacked: true, grid: { display: false }, ticks: { color: CR_TICK, font: { size: 10 } } }
       }
     }
   });
 
-  // 3. Duration vs hook, per asset.
-  const assets = [];
+  // 3 & 4. Hook and hold separately, each ranked and colour-graded.
+  //    Split rather than combined because the actions differ: weak hook
+  //    means recut the opening, weak hold means recut the body.
+  const rankBar = (canvasId, key, unit, bands, chartRef) => {
+    const d = [...list].filter(c => c[key] > 0)
+      .sort((a, b) => b[key] - a[key]).slice(0, 10);
+    return new Chart(document.getElementById(canvasId), {
+      type: 'bar',
+      data: {
+        labels: d.map(c => short(c.name)),
+        datasets: [{
+          data: d.map(c => parseFloat(c[key].toFixed(1))),
+          backgroundColor: d.map(c => c[key] >= bands[0] ? CR_GOOD
+                                    : c[key] >= bands[1] ? CR_AVG : CR_POOR)
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false },
+                   tooltip: { callbacks: { label: ctx => `${ctx.raw}${unit}` } } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: CR_GRID },
+               ticks: { color: CR_TICK, callback: v => v + unit } },
+          y: { grid: { display: false }, ticks: { color: CR_TICK, font: { size: 10 } } }
+        }
+      }
+    });
+  };
+  // Bands follow the paid benchmarks: Meta hook 10, TikTok hook 30.
+  // Using 30/10 grades against the tougher of the two.
+  crHook = rankBar('cr-hook', 'avgHook', '%', [30, 10]);
+  crHold = rankBar('cr-hold', 'avgHold', '%', [15, 7]);
+
+  // 5. Length vs quality, per asset. Points coloured by that asset's
+  //    best organic CQR, so the pattern is visible without a legend.
+  const pts = { Good: [], Average: [], Poor: [] };
   all.forEach(c => c.assets.forEach(a => {
-    if (a.duration > 0 && a.hookRate > 0) assets.push({ x: a.duration, y: a.hookRate, name: c.name });
+    if (!a.duration) return;
+    const best = a.bestOrgCqr || a.cqr;
+    if (pts[best]) pts[best].push({ x: a.duration, y: c.goodShare ?? 0, name: a.short || a.id });
   }));
   crDuration = new Chart(document.getElementById('cr-duration'), {
     type: 'scatter',
-    data: { datasets: [{ data: assets, backgroundColor: '#6E5BD6', pointRadius: 5 }] },
+    data: { datasets: [
+      { label: 'Good',    data: pts.Good,    backgroundColor: CR_GOOD, pointRadius: 6 },
+      { label: 'Average', data: pts.Average, backgroundColor: CR_AVG,  pointRadius: 6 },
+      { label: 'Poor',    data: pts.Poor,    backgroundColor: CR_POOR, pointRadius: 6 }
+    ]},
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: {
-        label: ctx => `${ctx.raw.name}: ${ctx.raw.x}s, hook ${ctx.raw.y.toFixed(1)}%` } } },
+      plugins: { legend: { labels: { color: CR_TICK, font: { size: 11 }, boxWidth: 10 } },
+                 tooltip: { callbacks: { label: ctx => `${ctx.raw.name}: ${ctx.raw.x}s` } } },
       scales: {
-        x: { title: { display: true, text: 'Asset length (s)', color: tick, font: { size: 11 } },
-             beginAtZero: true, grid: { color: grid }, ticks: { color: tick } },
-        y: { title: { display: true, text: 'Hook rate %', color: tick, font: { size: 11 } },
-             beginAtZero: true, grid: { color: grid }, ticks: { color: tick, callback: v => v + '%' } }
+        x: { title: { display: true, text: 'Asset length (s)', color: CR_TICK, font: { size: 11 } },
+             beginAtZero: true, grid: { color: CR_GRID }, ticks: { color: CR_TICK } },
+        y: { title: { display: true, text: "Creator's % Good", color: CR_TICK, font: { size: 11 } },
+             min: 0, max: 100, grid: { color: CR_GRID },
+             ticks: { color: CR_TICK, callback: v => v + '%' } }
       }
     }
   });
 
-  // 4. Creator vs owned content. "43% hook rate" only means something
-  //    next to what your own content achieves.
+  // 6. Creator vs owned, on CQR mix rather than a single rate.
   const bs = (typeof ALL !== 'undefined' ? ALL : []).filter(d => d.type === 'Brand Say');
-  const mean = (arr, f) => { const v = arr.map(f).filter(n => n > 0); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 0; };
-  const crAssets = [];
-  all.forEach(c => c.assets.forEach(a => crAssets.push(a)));
+  const tally = arr => {
+    const t = { Good: 0, Average: 0, Poor: 0 };
+    arr.forEach(d => ['igOrganic', 'fbOrganic', 'ttOrganic'].forEach(k => {
+      const o = d[k]; if (o && t[o.cqr] !== undefined) t[o.cqr]++;
+    }));
+    return t;
+  };
+  const crAssets = []; all.forEach(c => c.assets.forEach(a => crAssets.push(a)));
+  const ct = tally(crAssets), bt = tally(bs);
 
   crVsBrand = new Chart(document.getElementById('cr-vs-brand'), {
     type: 'bar',
     data: {
-      labels: ['Hook rate %', 'Hold rate %', 'Avg watch (s)'],
+      labels: ['Creator', 'Brand Say'],
       datasets: [
-        { label: 'Creator', data: [
-            mean(crAssets, d => d.hookRate), mean(crAssets, d => d.holdRate),
-            mean(all.flatMap(c => c.watch), v => v)
-          ], backgroundColor: '#31117C' },
-        { label: 'Brand Say', data: [
-            mean(bs, d => d.hookRate), mean(bs, d => d.holdRate),
-            mean(bs, d => ((d.igOrganic && d.igOrganic.avgWatchTime) || (d.ttOrganic && d.ttOrganic.avgWatchTime) || 0))
-          ], backgroundColor: '#A3A8C2' }
+        { label: 'Good',    data: [ct.Good, bt.Good],       backgroundColor: CR_GOOD },
+        { label: 'Average', data: [ct.Average, bt.Average], backgroundColor: CR_AVG },
+        { label: 'Poor',    data: [ct.Poor, bt.Poor],       backgroundColor: CR_POOR }
       ]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: tick, font: { size: 11 }, boxWidth: 10 } } },
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: CR_TICK, font: { size: 11 }, boxWidth: 10 } } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: tick, font: { size: 11 } } },
-        y: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick } }
+        x: { stacked: true, beginAtZero: true, grid: { color: CR_GRID },
+             ticks: { color: CR_TICK, precision: 0 } },
+        y: { stacked: true, grid: { display: false }, ticks: { color: CR_TICK } }
       }
     }
   });
@@ -490,7 +568,6 @@ function openCreatorDetail(name) {
           ${row('Comments', fmtN(o.comments || 0))}
           ${row('Shares', fmtN(o.shares || 0))}
           ${k !== 'fb' ? row('Saves', fmtN(o.saves || 0)) : ''}
-          ${row('Eng rate', o.engagementRate ? o.engagementRate.toFixed(2) + '%' : '—')}
           ${row('Avg watch', o.avgWatchTime ? o.avgWatchTime.toFixed(1) + 's' : '—')}
           ${row('Retention', o.retentionRate ? o.retentionRate.toFixed(1) + '%' : '—')}
           <div style="margin-top:8px">
@@ -553,7 +630,8 @@ function openCreatorDetail(name) {
 
       <div class="detail-metrics" style="margin-bottom:20px">
         <div class="dm"><div class="dm-label">Avg views / asset</div><div class="dm-val">${fmtN(Math.round(c.avgViews))}</div></div>
-        <div class="dm"><div class="dm-label">Engagement rate</div><div class="dm-val">${c.avgEng > 0 ? c.avgEng.toFixed(2) + '%' : '—'}</div></div>
+        <div class="dm"><div class="dm-label">Quality</div><div class="dm-val">${c.goodShare !== null ? c.goodShare.toFixed(0) + '% Good' : '—'}</div>
+          <div style="font:400 12px var(--font-ui);color:var(--ink-500);margin-top:4px">${c.orgCqr.Good}G · ${c.orgCqr.Average}A · ${c.orgCqr.Poor}P</div></div>
         <div class="dm"><div class="dm-label">Avg watch time</div><div class="dm-val">${c.avgWatch > 0 ? c.avgWatch.toFixed(1) + 's' : '—'}</div></div>
         <div class="dm"><div class="dm-label">Paid spend</div><div class="dm-val">${c.spend > 0 ? fmt(c.spend) : '—'}</div>
           <div style="font:400 12px var(--font-ui);color:var(--ink-500);margin-top:4px">${c.paidAssets} of ${c.videos} amplified</div></div>
