@@ -31,11 +31,22 @@
   // Logo lookup tries several conventions before giving up, so files can sit
   // in /img or /img/brands and be named "Lifebuoy.svg" or "lifebuoy.svg".
   // First one that loads wins; if none do, the monogram shows.
+  // Exact brand-name -> file. Add an entry whenever the database name does
+  // not match the filename: every miss below costs a 404 round trip before
+  // the logo appears, so anything listed here loads on the first request.
+  const BRAND_LOGOS = {
+    'Surf Excel': '/img/Surf.svg',
+    // "Database name": "/img/File.svg",
+  };
+
   function logoCandidates(name) {
     const raw = String(name || '').trim();
-    // Database names rarely match filenames exactly: "Surf Excel" is filed as
-    // Surf.svg, "Pond's" as Ponds.svg. Try progressively looser forms —
-    // exact, hyphenated, punctuation stripped, then just the first word.
+    if (BRAND_LOGOS[raw]) return [BRAND_LOGOS[raw]];
+
+    // Otherwise guess, loosest last: exact, hyphenated, punctuation stripped,
+    // first word. Extension is the OUTER loop so every name form is tried as
+    // .svg before anything is tried as .png — logos are almost always SVG,
+    // and this cuts the worst case from 16 requests to 4.
     const compact = raw.replace(/[^A-Za-z0-9]/g, '');
     const first   = raw.split(/[\s\-–—/&]+/)[0] || '';
     const bases = [];
@@ -43,9 +54,9 @@
       .forEach(b => { if (b && bases.indexOf(b) === -1) bases.push(b); });
 
     const out = [];
-    ['/img/', '/img/brands/'].forEach(dir => {
-      bases.forEach(base => {
-        ['svg', 'png', 'webp', 'jpg'].forEach(ext => {
+    ['svg', 'png', 'webp', 'jpg'].forEach(ext => {
+      ['/img/', '/img/brands/'].forEach(dir => {
+        bases.forEach(base => {
           const url = dir + encodeURIComponent(base) + '.' + ext;
           if (out.indexOf(url) === -1) out.push(url);
         });
