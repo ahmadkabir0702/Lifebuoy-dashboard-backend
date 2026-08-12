@@ -231,15 +231,12 @@
   }
 
   window.enhanceFilterDropdowns = function () {
-    [
-      ['campaign-filter',     'Campaign'],
-      ['month-filter',        'Month'],
-      ['content-type-filter', 'Content type'],
-      ['origin-filter',       'Origin'],
-      ['validation-filter',   'Validation'],
-      ['action-filter',       'Action status'],
-      ['status-filter',       'Ad status'],
-    ].forEach(([id, caption]) => enhance(document.getElementById(id), { caption }));
+    // No inline caption here: every one of these sits under its own <label>
+    // in the filters panel, so repeating the field name inside the control
+    // just costs width and truncates the value.
+    ['campaign-filter', 'month-filter', 'content-type-filter', 'origin-filter',
+     'validation-filter', 'action-filter', 'status-filter']
+      .forEach(id => enhance(document.getElementById(id)));
   };
 
   // populateFilters() rewrites the option lists — repaint after it runs.
