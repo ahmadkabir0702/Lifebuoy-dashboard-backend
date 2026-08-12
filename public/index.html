@@ -277,6 +277,7 @@
     <div class="nav-tabs">
       <div class="nav-item active" onclick="setNav('creatives',this)">Creative Hub</div>
       <div class="nav-item" onclick="setNav('kpi',this)">Campaign KPIs</div>
+      <div class="nav-item" onclick="setNav('creators',this)">Creators</div>
     </div>
 
     <div class="topbar-right">
@@ -401,6 +402,7 @@
         </div>
 
 <div id="page-kpi" class="hidden"></div>
+<div id="page-creators" class="hidden"></div>
         
         </div>
       </div>
@@ -528,6 +530,7 @@ function clearFilters(){
 window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
 </script>
   <script src="/js/dashboard.js"></script>
+  <script src="/js/creators.js"></script>
   <script src="/js/kpi-dashboard.js"></script>
   <script src="/js/dropdowns.js"></script>
   <script src="/js/pretest.js"></script>
@@ -540,9 +543,10 @@ window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
     window.setNav = function(page, el){
       if (typeof orig === 'function') orig(page, el);
       const kpi = page === 'kpi';
-      document.getElementById('creative-filters')?.classList.toggle('hidden', kpi);
+      const creatives = page === 'creatives';
+      document.getElementById('creative-filters')?.classList.toggle('hidden', !creatives);
       document.getElementById('kpi-filters-bar')?.classList.toggle('hidden', !kpi);
-      document.getElementById('filter-pills')?.classList.toggle('hidden', kpi);
+      document.getElementById('filter-pills')?.classList.toggle('hidden', !creatives);
       if (kpi && typeof renderKPIFilters === 'function') renderKPIFilters();
     };
   })();
