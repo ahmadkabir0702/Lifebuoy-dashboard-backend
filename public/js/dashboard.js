@@ -201,13 +201,13 @@ function populateFilters() {
 }
 
 function setNav(page, element) {
-    const creativePage = document.getElementById('page-creatives');
-    const kpiPage = document.getElementById('page-kpi');
-    if (creativePage) creativePage.classList.add('hidden');
-    if (kpiPage) kpiPage.classList.add('hidden');
+    ['page-creatives', 'page-kpi', 'page-creators'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
     const selectedPage = document.getElementById(`page-${page}`);
     if (selectedPage) selectedPage.classList.remove('hidden');
-    const titles = { 'creatives': 'Creative Hub', 'kpi': 'Campaign KPIs' };
+    const titles = { 'creatives': 'Creative Hub', 'kpi': 'Campaign KPIs', 'creators': 'Creators' };
     const titleEl = document.getElementById('topbar-title');
     if (titleEl) titleEl.innerText = titles[page] || '';
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -218,14 +218,17 @@ function setNav(page, element) {
         if (navLink) navLink.classList.add('active');
     }
     currentPage = page;
-    // The KPI tab owns its own filter state, so the Creative Hub filter
-    // row does nothing there. Hiding it removes two competing filter
-    // systems from the same screen.
+    // Only the Creative Hub uses the topbar filter row. The KPI tab has
+    // its own filter state and the Creators tab has its own controls, so
+    // showing it on either would give two competing filter systems.
     const topFilters = document.querySelector('.topbar .filters');
-    if (topFilters) topFilters.style.display = (page === 'kpi') ? 'none' : 'flex';
+    if (topFilters) topFilters.style.display = (page === 'creatives') ? 'flex' : 'none';
     if (page === 'kpi') {
         if (isLoading) showSkeleton();
         else if (typeof renderKPIDashboard === 'function') renderKPIDashboard();
+    }
+    if (page === 'creators' && typeof renderCreatorTab === 'function') {
+        renderCreatorTab();
     }
 }
 
