@@ -227,17 +227,6 @@ function renderKPIShell(page) {
       .cqr-mini-bar div { border-radius: 2px; }
 
       /* Duration grid */
-      .dur-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-      .dur-card { background: #F4F6F8; border: 0; border-radius: 8px; padding: 16px; }
-      .dur-card-title { font: 400 13px/18px var(--font, 'Rubik', sans-serif); text-transform: none;
-        letter-spacing: 0; color: var(--ink-600, #4A4A75); margin-bottom: 12px; }
-      .dur-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-      .dur-label { font: 400 13px var(--font, 'Rubik', sans-serif); color: var(--ink-600, #4A4A75);
-        width: 68px; flex-shrink: 0; }
-      .dur-bar-track { flex: 1; height: 14px; background: #EAEFF3; border-radius: 4px; overflow: hidden; }
-      .dur-bar-fill { height: 14px; border-radius: 4px; display: flex; align-items: center;
-        justify-content: flex-end; padding-right: 7px; }
-      .dur-bar-label { font: 500 11px var(--font, 'Rubik', sans-serif); color: #fff; }
 
       /* Platform table */
       .plat-table { width: 100%; border-collapse: collapse; }
@@ -259,7 +248,6 @@ function renderKPIShell(page) {
       @media (max-width: 800px) {
         .kpi-stat-row.cols-5, .kpi-stat-row.cols-4 { grid-template-columns: 1fr 1fr; }
         .kpi-chart-row.cols-2 { grid-template-columns: 1fr; }
-        .dur-grid { grid-template-columns: 1fr; }
       }
     </style>
 
@@ -273,22 +261,12 @@ function renderKPIShell(page) {
     <div class="kpi-stat-row cols-4" id="kpi-s2-pipeline"></div>
     <div class="kpi-chart-row cols-2">
       <div class="kc">
-        <div class="kc-title">Duration Tier Insights — Brand Say <span class="kc-badge">CQR Distribution</span></div>
-        <div id="kpi-dur-bs"></div>
-      </div>
-      <div class="kc">
-        <div class="kc-title">Duration Tier Insights — Others Say <span class="kc-badge">CQR Distribution</span></div>
-        <div id="kpi-dur-os"></div>
-      </div>
-    </div>
-    <div class="kpi-chart-row cols-2">
-      <div class="kc">
         <div class="kc-title">Performance Head-to-Head <span class="kc-badge">Paid Avg</span></div>
         <div class="kc-wrap"><canvas id="chart-head2head"></canvas></div>
       </div>
       <div class="kc">
         <div class="kc-title">Spend by CQR <span class="kc-badge">Media Waste</span></div>
-        <div class="kc-wrap"><canvas id="chart-cqr-donut"></canvas></div>
+        <div class="kc-wrap"><canvas id="chart-cqr-spend"></canvas></div>
       </div>
     </div>
 
@@ -405,52 +383,6 @@ function renderSection2(allData, allContent) {
     { label:'60s+',   min:60, max:Infinity },
   ];
 
-  const buildDur = (assets, id, accent) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const tiers = durTiers.map(t => {
-      const grp = assets.filter(d => { const dur=kpi.safeNum(d.duration); return dur>0&&dur>=t.min&&dur<t.max; });
-      const cqr = {Good:0,Average:0,Poor:0,Invalid:0};
-      grp.forEach(d=>{ if(cqr[d.cqr]!==undefined) cqr[d.cqr]++; });
-      return { label:t.label, total:grp.length, cqr, avgHook:kpi.avg(grp,'hookRate'), avgHold:kpi.avg(grp,'holdRate') };
-    });
-    const maxT = Math.max(...tiers.map(t=>t.total),1);
-    el.innerHTML = `<div class="dur-grid">${tiers.map(t=>{
-      const {Good:g,Average:a,Poor:p,Invalid:inv} = t.cqr;
-      const fp = Math.round(t.total/maxT*100);
-      return `<div class="dur-card">
-        <div class="dur-card-title">${t.label} <span style="font-size:13px;color:var(--c-muted);font-weight:400">(${t.total} videos)</span></div>
-        <div class="dur-row">
-          <div class="dur-label">Volume</div>
-          <div class="dur-bar-track"><div class="dur-bar-fill" style="width:${fp}%;background:${accent}"><span class="dur-bar-label">${t.total}</span></div></div>
-        </div>
-        ${t.total>0?`
-          <div style="margin-top:6px">
-            <div style="font-size:12px;color:var(--c-muted);margin-bottom:5px">CQR split</div>
-            <div class="cqr-mini-bar" style="width:100%">
-              ${g>0?`<div style="flex:${g};background:#04785C" title="${g} Good"></div>`:''}
-              ${a>0?`<div style="flex:${a};background:#8A5A12" title="${a} Avg"></div>`:''}
-              ${p>0?`<div style="flex:${p};background:#A32040" title="${p} Poor"></div>`:''}
-              ${inv>0?`<div style="flex:${inv};background:#6B6B90" title="${inv} Invalid"></div>`:''}
-            </div>
-            <div style="font-size:12px;color:var(--c-muted);margin-top:4px">
-              <span style="color:#04785C">●${g}G</span> <span style="color:#8A5A12">●${a}A</span> <span style="color:#A32040">●${p}P</span>
-            </div>
-          </div>
-          <div style="margin-top:6px;display:flex;gap:12px">
-            <div style="font-size:13px"><span style="color:var(--c-muted)">Hook:</span> <strong>${kpi.pct(t.avgHook)}</strong></div>
-            <div style="font-size:13px"><span style="color:var(--c-muted)">Hold:</span> <strong>${t.avgHold.toFixed(1)}</strong></div>
-          </div>`
-        :'<div style="font-size:13px;color:var(--c-muted);padding:4px 0">No data</div>'}
-      </div>`;
-    }).join('')}</div>`;
-  };
-
-  const bsData = allData.filter(d=>d.type==='Brand Say');
-  const osData = allData.filter(d=>d.type==='Others Say');
-  buildDur(bsData,'kpi-dur-bs','#000050');
-  buildDur(osData,'kpi-dur-os','#5A5A9E');
-
   kpi.make('chart-head2head','bar',{
     labels:['Avg Hook Rate','Avg VTR %','Avg Watch Time'],
     datasets:[
@@ -461,10 +393,28 @@ function renderSection2(allData, allContent) {
 
   const cqrSpend={Good:0,Average:0,Poor:0,Invalid:0};
   allData.forEach(d=>{if(cqrSpend[d.cqr]!==undefined) cqrSpend[d.cqr]+=(d.spend||0);});
-  kpi.make('chart-cqr-donut','doughnut',{
-    labels:['Good','Average','Poor','Invalid'],
-    datasets:[{data:[cqrSpend.Good,cqrSpend.Average,cqrSpend.Poor,cqrSpend.Invalid],backgroundColor:['#04785C','#8A5A12','#A32040','#6B6B90'],borderWidth:0}]
-  },{responsive:true,maintainAspectRatio:false,cutout:'62%',plugins:{legend:{...kpi.legendDefaults(co),position:'right'},tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${kpi.fmtMoney(ctx.raw)}`}}}});
+  // Spend by CQR as a single 100% stacked bar rather than a donut.
+  // Comparing arc lengths is unreliable; segment widths on one axis are
+  // directly comparable and take a third of the vertical space.
+  const totalCqrSpend = cqrSpend.Good + cqrSpend.Average + cqrSpend.Poor + cqrSpend.Invalid;
+  const pctOf = v => totalCqrSpend ? v / totalCqrSpend * 100 : 0;
+  kpi.make('chart-cqr-spend','bar',{
+    labels:['Spend'],
+    datasets:[
+      {label:'Good',   data:[pctOf(cqrSpend.Good)],    backgroundColor:'#04785C'},
+      {label:'Average',data:[pctOf(cqrSpend.Average)], backgroundColor:'#8A5A12'},
+      {label:'Poor',   data:[pctOf(cqrSpend.Poor)],    backgroundColor:'#A32040'},
+      {label:'Invalid',data:[pctOf(cqrSpend.Invalid)], backgroundColor:'#6B6B90'}
+    ]
+  },{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+     plugins:{legend:{...kpi.legendDefaults(co),position:'bottom'},
+       tooltip:{callbacks:{label:ctx=>{
+         const raw={Good:cqrSpend.Good,Average:cqrSpend.Average,Poor:cqrSpend.Poor,Invalid:cqrSpend.Invalid}[ctx.dataset.label];
+         return ` ${ctx.dataset.label}: ${kpi.fmtMoney(raw)} (${ctx.raw.toFixed(0)}%)`;
+       }}}},
+     scales:{x:{...kpi.scaleDefaults(co),stacked:true,max:100,
+                ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>v+'%'}},
+             y:{...kpi.scaleDefaults(co),stacked:true,grid:{display:false}}}});
 }
 
 // ── Section 3 ─────────────────────────────────────────────────────────────────
