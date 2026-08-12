@@ -318,19 +318,19 @@
             <div class="filters" id="filters-panel">
               <div>
                 <label for="campaign-filter">Campaign</label>
-                <select id="campaign-filter" onchange="render()"><option value="all">All campaigns</option></select>
+                <select id="campaign-filter" onchange="onDraftChange()"><option value="all">All campaigns</option></select>
               </div>
               <div>
                 <label for="month-filter">Month</label>
-                <select id="month-filter" onchange="render()"><option value="all">All months</option></select>
+                <select id="month-filter" onchange="onDraftChange()"><option value="all">All months</option></select>
               </div>
               <div>
                 <label for="content-type-filter">Content type</label>
-                <select id="content-type-filter" onchange="render()"><option value="all">All content types</option></select>
+                <select id="content-type-filter" onchange="onDraftChange()"><option value="all">All content types</option></select>
               </div>
               <div>
                 <label for="origin-filter">Origin</label>
-                <select id="origin-filter" onchange="render()">
+                <select id="origin-filter" onchange="onDraftChange()">
                   <option value="all">Originals and repurposed</option>
                   <option value="original">Originals only</option>
                   <option value="repurposed">Repurposed only</option>
@@ -339,7 +339,7 @@
               </div>
               <div>
                 <label for="validation-filter">Validation</label>
-                <select id="validation-filter" onchange="render()">
+                <select id="validation-filter" onchange="onDraftChange()">
                   <option value="all">All validation</option>
                   <option value="validated">Validated</option>
                   <option value="not_validated">Not validated</option>
@@ -347,7 +347,7 @@
               </div>
               <div>
                 <label for="action-filter">Action status</label>
-                <select id="action-filter" onchange="render()">
+                <select id="action-filter" onchange="onDraftChange()">
                   <option value="all">All action status</option>
                   <option value="actioned">Actioned</option>
                   <option value="not_actioned">Not actioned</option>
@@ -355,7 +355,7 @@
               </div>
               <div>
                 <label for="status-filter">Ad status</label>
-                <select id="status-filter" onchange="render()">
+                <select id="status-filter" onchange="onDraftChange()">
                   <option value="all">All ad status</option>
                   <option value="ACTIVE">Active ads</option>
                   <option value="STOPPED">Stopped ads</option>
@@ -366,7 +366,8 @@
               </div>
               <div class="filters-foot">
                 <button class="modal-btn" onclick="clearFilters()">Clear all</button>
-                <button class="modal-btn modal-confirm" id="filters-done" onclick="closeFilters()">Done</button>
+                <button class="modal-btn" onclick="cancelFilters()">Cancel</button>
+                <button class="modal-btn modal-confirm" id="filters-done" onclick="applyFilters()">Apply</button>
               </div>
             </div>
           </div>
@@ -416,35 +417,86 @@ const FILTER_LABELS = {
   'origin-filter':'Origin',
   'action-filter':'Action status', 'status-filter':'Ad status'
 };
-function toggleFilters(e){
-  e.stopPropagation();
-  document.getElementById('filters-panel').classList.toggle('open');
+
+/* Filters are STAGED. Changing a dropdown updates the draft and the result
+   count only — the grid is not touched until Apply. Cancel, Escape and a
+   click outside all revert to the values that were live when the panel
+   was opened, so nothing changes behind your back. */
+let filterSnapshot = null;
+
+function snapshotFilters(){
+  filterSnapshot = {};
+  Object.keys(FILTER_LABELS).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) filterSnapshot[id] = el.value;
+  });
+}
+
+function restoreFilters(){
+  if (!filterSnapshot) return;
+  Object.keys(filterSnapshot).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = filterSnapshot[id];
+  });
+  if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
+}
+
+function openFilters(){
+  snapshotFilters();
+  document.getElementById('filters-panel').classList.add('open');
   updateFiltersDone();
 }
 function closeFilters(){ document.getElementById('filters-panel').classList.remove('open'); }
+
+function toggleFilters(e){
+  e.stopPropagation();
+  const p = document.getElementById('filters-panel');
+  if (p.classList.contains('open')) cancelFilters(); else openFilters();
+}
+
+function cancelFilters(){ restoreFilters(); closeFilters(); }
+
+function applyFilters(){
+  closeFilters();
+  filterSnapshot = null;
+  if (typeof render === 'function') render();
+  syncFilterPills();
+}
+
+// A dropdown changed inside the panel: update the count, leave the grid alone.
+function onDraftChange(){ updateFiltersDone(); }
+
 document.addEventListener('click', e => {
   const w = document.querySelector('.filters-wrap');
-  if (w && !w.contains(e.target)) closeFilters();
+  const p = document.getElementById('filters-panel');
+  if (w && p && p.classList.contains('open') && !w.contains(e.target)) cancelFilters();
 });
+document.addEventListener('keydown', e => {
+  const p = document.getElementById('filters-panel');
+  if (e.key === 'Escape' && p && p.classList.contains('open')) cancelFilters();
+});
+
 function activeFilters(){
   return Object.keys(FILTER_LABELS)
     .map(id => ({ id, el: document.getElementById(id) }))
     .filter(f => f.el && f.el.value && f.el.value !== 'all');
 }
+
+// Draft count on the Apply button — the panel covers the grid, so this is
+// the only preview of what applying would give you.
 function updateFiltersDone(){
   const btn = document.getElementById('filters-done');
   if (!btn || typeof getData !== 'function') return;
   try {
     const n = getData().length;
-    btn.textContent = n === 1 ? 'Show 1 creative' : `Show ${n} creatives`;
-  } catch (e) { btn.textContent = 'Done'; }
+    btn.textContent = n === 1 ? 'Apply · 1 creative' : `Apply · ${n} creatives`;
+  } catch (e) { btn.textContent = 'Apply'; }
 }
 
 function syncFilterPills(){
   const act = activeFilters();
   const badge = document.getElementById('filters-count');
   if (badge) badge.textContent = act.length ? act.length : '';
-  updateFiltersDone();
   const box = document.getElementById('filter-pills');
   if (!box) return;
   box.innerHTML = act.map(f => {
@@ -453,22 +505,26 @@ function syncFilterPills(){
            `<span onclick="removeFilter('${f.id}')">&times;</span></span>`;
   }).join('') + (act.length > 1 ? '<button class="filter-clear" onclick="clearFilters()">Clear all</button>' : '');
 }
+
+// Pills live outside the panel, so removing one applies straight away.
 function removeFilter(id){
   const el = document.getElementById(id);
-  if (el){ el.value = 'all'; el.dispatchEvent(new Event('change', {bubbles:true})); }
+  if (el) el.value = 'all';
+  if (filterSnapshot) filterSnapshot[id] = 'all';
+  if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
+  if (typeof render === 'function') render();
   syncFilterPills();
 }
+
 function clearFilters(){
   Object.keys(FILTER_LABELS).forEach(id => {
     const el = document.getElementById(id);
-    if (el && el.value !== 'all'){ el.value = 'all'; el.dispatchEvent(new Event('change', {bubbles:true})); }
+    if (el) el.value = 'all';
   });
   if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
-  syncFilterPills();
-  closeFilters();
+  applyFilters();
 }
-document.addEventListener('change', e => { if (e.target.closest('#filters-panel')) syncFilterPills(); });
-document.addEventListener('click', e => { if (e.target.closest('#filters-panel')) setTimeout(updateFiltersDone, 0); });
+
 window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
 </script>
   <script src="/js/dashboard.js"></script>
