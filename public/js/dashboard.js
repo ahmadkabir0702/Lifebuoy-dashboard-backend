@@ -768,6 +768,8 @@ function openAddCreativeModal() {
   const orgIdSelect = document.getElementById('ac-original-id');
   const creativeIds = [...new Set(ALL.map(c => c.id).filter(id => id))];
   orgIdSelect.innerHTML = '<option value="" disabled selected>Select Original Creative ID</option>';
+  if (typeof enhanceSelectsIn === 'function') enhanceSelectsIn('addCreativeModal');
+  if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
   creativeIds.forEach(id => { orgIdSelect.innerHTML += `<option value="${id}">${id}</option>`; });
 }
 
