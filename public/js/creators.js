@@ -22,6 +22,8 @@ let CREATOR_SORT = { key: 'totalViews', dir: 'desc' };
 let CREATOR_SEARCH = '';
 let CREATOR_MIN_VIDEOS = 1;
 let CREATOR_PLATFORM = 'all';
+let CREATOR_CAMPAIGN = 'all';
+let CREATOR_MONTH = 'all';
 let SELECTED_CREATOR = null;
 
 // ---------------------------------------------------------------------
@@ -29,7 +31,11 @@ let SELECTED_CREATOR = null;
 // ---------------------------------------------------------------------
 function buildCreators() {
   const src = (typeof ALL !== 'undefined' ? ALL : [])
-    .filter(d => d.type === 'Others Say' && d.creatorProfile);
+    .filter(d => d.type === 'Others Say' && d.creatorProfile)
+    // Campaign and month are applied here, not to the creator list, so
+    // the aggregated figures describe the filtered period only.
+    .filter(d => CREATOR_CAMPAIGN === 'all' || d.campaign === CREATOR_CAMPAIGN)
+    .filter(d => CREATOR_MONTH === 'all' || d.month === CREATOR_MONTH);
 
   const map = {};
   src.forEach(d => {
@@ -151,6 +157,13 @@ function renderCreatorTab() {
   const all = buildCreators();
   const list = filteredCreators();
 
+  // Options come from the unfiltered set — deriving them from the
+  // filtered set would leave only the option already selected.
+  const osAll = (typeof ALL !== 'undefined' ? ALL : [])
+    .filter(d => d.type === 'Others Say' && d.creatorProfile);
+  const campaignOpts = [...new Set(osAll.map(d => d.campaign).filter(Boolean))].sort();
+  const monthOpts = [...new Set(osAll.map(d => d.month).filter(Boolean))].sort();
+
   if (all.length === 0) {
     page.innerHTML = `<div class="content"><div class="organic-empty">
       No creator content for ${typeof BRAND_NAME !== 'undefined' ? BRAND_NAME : 'this brand'} yet.
@@ -200,6 +213,20 @@ function renderCreatorTab() {
     </div>
 
     <div class="cr-toolbar">
+      <span class="cr-flabel">Campaign</span>
+      <select onchange="setCreatorCampaign(this.value)">
+        <option value="all"${CREATOR_CAMPAIGN === 'all' ? ' selected' : ''}>All campaigns</option>
+        ${campaignOpts.map(c => `<option value="${c}"${CREATOR_CAMPAIGN === c ? ' selected' : ''}>${c}</option>`).join('')}
+      </select>
+
+      <span class="cr-flabel">Month</span>
+      <div class="cr-pills">
+        <button class="cr-pill ${CREATOR_MONTH === 'all' ? 'cr-pill-on' : ''}"
+                onclick="setCreatorMonth('all')">All</button>
+        ${monthOpts.map(m => `<button class="cr-pill ${CREATOR_MONTH === m ? 'cr-pill-on' : ''}"
+                onclick="setCreatorMonth('${m}')">${m}</button>`).join('')}
+      </div>
+
       <input id="cr-search" class="search-input" placeholder="Search creator..."
              value="${CREATOR_SEARCH}" oninput="setCreatorSearch(this.value)">
       <select onchange="setCreatorPlatform(this.value)">
@@ -436,55 +463,103 @@ function drawCreatorCharts(list, all) {
 function openCreatorDetail(name) {
   const c = buildCreators().find(x => x.name === name);
   if (!c) return;
-  SELECTED_CREATOR = name;
 
-  const rows = c.assets.map(a => {
-    const orgs = [
-      a.igOrganic ? { p: 'IG', o: a.igOrganic } : null,
-      a.ttOrganic ? { p: 'TT', o: a.ttOrganic } : null,
-      a.fbOrganic ? { p: 'FB', o: a.fbOrganic } : null
-    ].filter(Boolean);
-    return `<tr>
-      <td>${a.short || a.id}</td>
-      <td>${a.campaign || '—'}</td>
-      <td>${a.duration ? a.duration + 's' : '—'}</td>
-      <td>${orgs.map(x => `${x.p} ${fmtN(x.o.views || 0)}`).join('<br>') || '—'}</td>
-      <td>${orgs.map(x => `<span class="kpi-pill ${cqrClass(x.o.cqr)}">${x.o.cqr || '—'}</span>`).join(' ') || '—'}</td>
-      <td>${a.spend > 0 ? fmt(a.spend) : '<span class="kpi-muted">Not boosted</span>'}</td>
-      <td>${a.spend > 0 ? `<span class="kpi-pill ${cqrClass(a.cqr)}">${a.cqr}</span>` : '—'}</td>
-    </tr>`;
+  const PLAT = { ig: 'Instagram', tt: 'TikTok', fb: 'Facebook' };
+
+  // One block per asset, and inside it one column per platform. A single
+  // combined row hid the fact that the same asset can score Good on
+  // TikTok and Poor on Instagram — which is the actionable part.
+  const assetBlocks = c.assets.map(a => {
+    const platCols = ['ig','tt','fb'].map(k => {
+      const o = a[k + 'Organic'];
+      if (!o) return `
+        <div class="cr-plat-col cr-plat-empty">
+          <div class="cr-plat-name">${PLAT[k]}</div>
+          <div class="organic-empty">Not posted</div>
+        </div>`;
+      const views = o.views || o.videoViews || 0;
+      const row = (label, val) => `
+        <div class="organic-stat-row"><span class="organic-stat-label">${label}</span>
+        <span class="organic-stat-val">${val}</span></div>`;
+      return `
+        <div class="cr-plat-col">
+          <div class="cr-plat-name">${PLAT[k]}</div>
+          ${row('Views', fmtN(views))}
+          ${row('Reach', o.reach ? fmtN(o.reach) : '—')}
+          ${row(k === 'fb' ? 'Reactions' : 'Likes', fmtN(o.likes || o.reactions || 0))}
+          ${row('Comments', fmtN(o.comments || 0))}
+          ${row('Shares', fmtN(o.shares || 0))}
+          ${k !== 'fb' ? row('Saves', fmtN(o.saves || 0)) : ''}
+          ${row('Eng rate', o.engagementRate ? o.engagementRate.toFixed(2) + '%' : '—')}
+          ${row('Avg watch', o.avgWatchTime ? o.avgWatchTime.toFixed(1) + 's' : '—')}
+          ${row('Retention', o.retentionRate ? o.retentionRate.toFixed(1) + '%' : '—')}
+          <div style="margin-top:8px">
+            <span class="kpi-pill ${cqrClass(o.cqr)}">${o.cqr || 'Not scored'}</span>
+          </div>
+        </div>`;
+    }).join('');
+
+    const paid = a.spend > 0 ? `
+      <div class="cr-paid-strip">
+        <div><span class="cr-paid-label">Spend</span> ${fmt(a.spend)}</div>
+        <div><span class="cr-paid-label">Reach</span> ${fmtN(a.reach || 0)}</div>
+        <div><span class="cr-paid-label">Hook</span> ${(a.hookRate || 0).toFixed(1)}%</div>
+        <div><span class="cr-paid-label">Hold</span> ${(a.holdRate || 0).toFixed(1)}</div>
+        <div><span class="kpi-pill ${cqrClass(a.cqr)}">${a.cqr}</span></div>
+      </div>`
+      : `<div class="cr-paid-strip"><span class="kpi-muted">Not boosted — organic only</span></div>`;
+
+    const brief = (a.contentHook || (a.segments && a.segments.length)) ? `
+      <details class="org-details" style="margin-top:12px">
+        <summary class="org-summary">Creative brief
+          <span style="color:var(--ink-400);font-size:10px">Click to expand ▼</span></summary>
+        <div class="org-content">
+          ${a.contentHook ? `<div class="brief-hook"><span class="brief-hook-label">Hook</span>
+            <div class="brief-hook-text">${a.contentHook}</div></div>` : ''}
+          ${(a.segments || []).length ? `<div class="brief-segs" style="margin-top:12px">${
+            a.segments.map((sg, i2) => `<div class="seg-row">
+              <div class="seg-label">${['0–25%','25–50%','50–75%','75–100%'][i2] || ''}</div>
+              <div class="seg-text">${sg}</div></div>`).join('')
+          }</div>` : ''}
+        </div>
+      </details>` : '';
+
+    return `
+      <div class="cr-asset">
+        <div class="cr-asset-head">
+          <div>
+            <div class="cr-asset-title">${a.short || a.id}</div>
+            <div class="cr-asset-meta">${[a.campaign, a.month, a.duration ? a.duration + 's' : null]
+              .filter(Boolean).join(' · ')}</div>
+          </div>
+          ${a.creativeLink ? `<button class="view-btn" onclick="window.open('${a.creativeLink}','_blank')">View ↗</button>` : ''}
+        </div>
+        ${paid}
+        <div class="cr-plat-grid">${platCols}</div>
+        ${brief}
+      </div>`;
   }).join('');
 
   document.getElementById('creativeModalContent').innerHTML = `
     <div class="cm-body">
       <div class="detail-header">
         <div>
-          <div class="detail-title">${c.profileUrl ? `<a href="${c.profileUrl}" target="_blank" class="creator-link">${c.name}</a>` : c.name}</div>
-          <div class="detail-meta">${c.videos} assets · ${fmtN(c.totalViews)} views · ${c.platforms.join(' · ')}</div>
+          <div class="detail-title">${c.profileUrl
+            ? `<a href="${c.profileUrl}" target="_blank" class="creator-link">${c.name}</a>` : c.name}</div>
+          <div class="detail-meta">${c.videos} asset${c.videos > 1 ? 's' : ''} · ${fmtN(c.totalViews)} views · ${c.platforms.join(' · ')}</div>
         </div>
         <button class="close-btn" onclick="closeCreativeModal({target:{id:'creativeModalOverlay'}})">×</button>
       </div>
 
       <div class="detail-metrics" style="margin-bottom:20px">
         <div class="dm"><div class="dm-label">Avg views / asset</div><div class="dm-val">${fmtN(Math.round(c.avgViews))}</div></div>
+        <div class="dm"><div class="dm-label">Engagement rate</div><div class="dm-val">${c.avgEng > 0 ? c.avgEng.toFixed(2) + '%' : '—'}</div></div>
         <div class="dm"><div class="dm-label">Avg watch time</div><div class="dm-val">${c.avgWatch > 0 ? c.avgWatch.toFixed(1) + 's' : '—'}</div></div>
-        <div class="dm"><div class="dm-label">Validated</div><div class="dm-val">${c.validRate !== null ? c.validRate.toFixed(0) + '%' : '—'}</div>
-          <div style="font:400 12px var(--font-ui);color:var(--ink-500);margin-top:4px">${c.orgCqr.Good}G / ${c.orgCqr.Average}A / ${c.orgCqr.Poor}P</div></div>
         <div class="dm"><div class="dm-label">Paid spend</div><div class="dm-val">${c.spend > 0 ? fmt(c.spend) : '—'}</div>
           <div style="font:400 12px var(--font-ui);color:var(--ink-500);margin-top:4px">${c.paidAssets} of ${c.videos} amplified</div></div>
       </div>
 
-      <div class="chart-box" style="padding:0;overflow-x:auto">
-        <table class="kpi-table">
-          <thead><tr>
-            <th>Asset</th><th>Campaign</th><th style="width:60px">Length</th>
-            <th style="width:120px">Organic views</th><th style="width:140px">Organic CQR</th>
-            <th style="width:100px">Spend</th><th style="width:90px">Paid CQR</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      ${assetBlocks}
     </div>`;
-
   document.getElementById('creativeModalOverlay').style.display = 'flex';
 }
