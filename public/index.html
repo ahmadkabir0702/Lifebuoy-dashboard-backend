@@ -280,7 +280,8 @@
     </div>
 
     <div class="topbar-right">
-      <select id="brand-switcher" onchange="switchBrand(this.value)"></select>
+      <div id="brand-switcher-ui"></div>
+      <select id="brand-switcher" onchange="switchBrand(this.value)" class="dd-native" aria-hidden="true" tabindex="-1"></select>
       <button class="btn-outline" onclick="openAddCreativeModal()">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add creative
       </button>
@@ -440,13 +441,15 @@ function syncFilterPills(){
 }
 function removeFilter(id){
   const el = document.getElementById(id);
-  if (el){ el.value = 'all'; }
-  if (typeof render === 'function') render();
+  if (el){ el.value = 'all'; el.dispatchEvent(new Event('change', {bubbles:true})); }
   syncFilterPills();
 }
 function clearFilters(){
-  Object.keys(FILTER_LABELS).forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
-  if (typeof render === 'function') render();
+  Object.keys(FILTER_LABELS).forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value !== 'all'){ el.value = 'all'; el.dispatchEvent(new Event('change', {bubbles:true})); }
+  });
+  if (typeof repaintFilterDropdowns === 'function') repaintFilterDropdowns();
   syncFilterPills();
   closeFilters();
 }
@@ -455,6 +458,7 @@ window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
 </script>
   <script src="/js/dashboard.js"></script>
   <script src="/js/kpi-dashboard.js"></script>
+  <script src="/js/dropdowns.js"></script>
   <script src="/js/pretest.js"></script>
   <script>
   /* The two tabs have different filters. Show whichever belongs to the
