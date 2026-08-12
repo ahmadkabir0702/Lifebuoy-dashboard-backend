@@ -113,7 +113,8 @@
     });
 
     host.querySelectorAll('.dd-item-brand').forEach(it => {
-      it.addEventListener('click', () => {
+      it.addEventListener('click', ev => {
+        ev.stopPropagation();
         const id = it.dataset.id;
         dd.classList.remove('open');
         btn.setAttribute('aria-expanded', 'false');
@@ -185,7 +186,12 @@
         `<div class="dd-list">${items}</div>`;
 
       menu.querySelectorAll('.dd-item').forEach(it => {
-        it.addEventListener('click', () => {
+        it.addEventListener('click', ev => {
+          // Stop here. paintMenu() below detaches this element, so if the
+          // click keeps bubbling, any outside-click handler further up sees
+          // a target that is no longer in the DOM and treats it as a click
+          // away — which is what was closing the filters panel.
+          ev.stopPropagation();
           select.selectedIndex = parseInt(it.dataset.i, 10);
           select.dispatchEvent(new Event('change', { bubbles: true }));
           wrap.classList.remove('open');
