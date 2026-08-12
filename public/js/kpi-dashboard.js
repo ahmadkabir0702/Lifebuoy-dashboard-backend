@@ -293,28 +293,20 @@ function renderKPIShell(page) {
     </div>
 
     <!-- S3 -->
-    <div class="kpi-section-title">Creator Insights</div>
-    <div class="kpi-chart-row cols-1">
-      <div class="kc">
-        <div class="kc-title">Platform Synergy <span class="kc-badge">Views per Creator — IG, TT, FB</span></div>
-        <div class="kc-wrap tall"><canvas id="chart-synergy"></canvas></div>
-      </div>
-    </div>
+    <div class="kpi-section-title">Creator Content</div>
+    <div class="kpi-stat-row cols-4" id="creator-summary-tiles"></div>
     <div class="kpi-chart-row cols-2">
       <div class="kc">
-        <div class="kc-title">Retention Champions <span class="kc-badge">Avg Watch Time (s)</span></div>
-        <div class="kc-wrap"><canvas id="chart-watch-time"></canvas></div>
+        <div class="kc-title">Creator vs Brand Say <span class="kc-badge">CQR mix</span></div>
+        <div class="kc-wrap"><canvas id="chart-cr-vs-bs"></canvas></div>
       </div>
       <div class="kc">
-        <div class="kc-title">Hook Masters <span class="kc-badge">Avg Hook Rate %</span></div>
-        <div class="kc-wrap"><canvas id="chart-hook-masters"></canvas></div>
+        <div class="kc-title">Signal comparison <span class="kc-badge">Hook, hold, watch time</span></div>
+        <div class="kc-wrap"><canvas id="chart-cr-signals"></canvas></div>
       </div>
     </div>
-    <div class="kpi-chart-row cols-1">
-      <div class="kc">
-        <div class="kc-title">Creator Consistency <span class="kc-badge">Volume vs CQR Quality</span></div>
-        <div style="overflow-x:auto;" id="creator-leaderboard-wrap"></div>
-      </div>
+    <div style="margin:-8px 0 28px">
+      <button class="kpi-tab-btn" onclick="setNav('creators')">Open Creators →</button>
     </div>
 
     <!-- S4 -->
@@ -478,75 +470,120 @@ function renderSection2(allData, allContent) {
 // ── Section 3 ─────────────────────────────────────────────────────────────────
 function renderSection3(allContent) {
   const co = kpi.colors();
-  const osContent = allContent.filter(d=>d.type==='Others Say'&&d.creatorProfile);
-  const cMap = {};
+  const os = allContent.filter(d => d.type === 'Others Say' && d.creatorProfile);
+  const bs = allContent.filter(d => d.type === 'Brand Say');
 
-  osContent.forEach(d=>{
-    const info = extractCreatorInfo(d.creatorProfile, d.ttLink);
-    const name = info?(info.username||d.creatorProfile):d.creatorProfile;
-    if (!name) return;
-    if (!cMap[name]) cMap[name]={name,profileUrl:info?.profileUrl||null,videos:0,igViews:0,ttViews:0,fbViews:0,igWatch:[],ttWatch:[],hookRates:[],holdRates:[],cqr:{Good:0,Average:0,Poor:0}};
-    const cm=cMap[name]; cm.videos++;
-    if(d.igOrganic){cm.igViews+=(d.igOrganic.views||0); if(d.igOrganic.avgWatchTime>0) cm.igWatch.push(d.igOrganic.avgWatchTime);}
-    if(d.ttOrganic){cm.ttViews+=(d.ttOrganic.views||0); if(d.ttOrganic.avgWatchTime>0) cm.ttWatch.push(d.ttOrganic.avgWatchTime);}
-    if(d.fbOrganic) cm.fbViews+=(d.fbOrganic.videoViews||0);
-    const paid=(typeof ALL!=='undefined'?ALL:[]).find(p=>p.id===d.id);
-    if(paid){if(paid.hookRate>0)cm.hookRates.push(paid.hookRate);if(paid.holdRate>0)cm.holdRates.push(paid.holdRate);if(cm.cqr[paid.cqr]!==undefined)cm.cqr[paid.cqr]++;}
+  const tiles = document.getElementById('creator-summary-tiles');
+
+  if (os.length === 0) {
+    if (tiles) tiles.innerHTML =
+      `<div class="organic-empty">No creator content in this selection.</div>`;
+    return;
+  }
+
+  // Organic CQR is the primary measure here. It is a composite of both
+  // signals rather than hook rate alone, and unlike paid CQR it does not
+  // depend on creative_id matching, so it is populated today.
+  const orgCqr = (arr) => {
+    const t = { Good: 0, Average: 0, Poor: 0 };
+    arr.forEach(d => ['igOrganic','fbOrganic','ttOrganic'].forEach(k => {
+      const o = d[k]; if (o && t[o.cqr] !== undefined) t[o.cqr]++;
+    }));
+    return t;
+  };
+  const views = (arr) => arr.reduce((s2, d) => s2 +
+    ((d.igOrganic?.views || 0) + (d.ttOrganic?.views || 0) +
+     (d.fbOrganic?.videoViews || d.fbOrganic?.views || 0)), 0);
+
+  const osC = orgCqr(os), bsC = orgCqr(bs);
+  const osScored = osC.Good + osC.Average + osC.Poor;
+  const bsScored = bsC.Good + bsC.Average + bsC.Poor;
+  const osValid = osScored ? (osC.Good + osC.Average) / osScored * 100 : null;
+  const bsValid = bsScored ? (bsC.Good + bsC.Average) / bsScored * 100 : null;
+
+  const osViews = views(os), bsViews = views(bs);
+  const share = (osViews + bsViews) ? osViews / (osViews + bsViews) * 100 : 0;
+
+  // Best creator by organic CQR, then views as the tie-break — ranking on
+  // views alone rewards reach rather than quality.
+  const byCreator = {};
+  os.forEach(d => {
+    const info = (typeof extractCreatorInfo === 'function')
+      ? extractCreatorInfo(d.creatorProfile, d.ttLink) : null;
+    const n = (info && info.username) || d.creatorProfile;
+    if (!n) return;
+    if (!byCreator[n]) byCreator[n] = { name: n, good: 0, scored: 0, views: 0 };
+    ['igOrganic','fbOrganic','ttOrganic'].forEach(k => {
+      const o = d[k]; if (!o || !o.cqr) return;
+      byCreator[n].scored++;
+      if (o.cqr === 'Good') byCreator[n].good++;
+      byCreator[n].views += o.views || o.videoViews || 0;
+    });
   });
+  const ranked = Object.values(byCreator)
+    .filter(c => c.scored > 0)
+    .sort((a, b) => (b.good / b.scored) - (a.good / a.scored) || b.views - a.views);
+  const top = ranked[0];
 
-  const creators = Object.values(cMap).map(c=>({
-    ...c,
-    totalViews:c.igViews+c.ttViews+c.fbViews,
-    avgWatch:[...c.igWatch,...c.ttWatch].reduce((a,b)=>a+b,0)/([...c.igWatch,...c.ttWatch].length||1),
-    avgHook:c.hookRates.reduce((a,b)=>a+b,0)/(c.hookRates.length||1),
-    avgHold:c.holdRates.reduce((a,b)=>a+b,0)/(c.holdRates.length||1),
-  })).filter(c=>c.videos>0).sort((a,b)=>b.totalViews-a.totalViews);
+  const creators = Object.keys(byCreator).length;
 
-  const top10     = creators.slice(0,10);
-  const top8Watch = [...creators].sort((a,b)=>b.avgWatch-a.avgWatch).slice(0,8);
-  const top8Hook  = [...creators].filter(c=>c.avgHook>0).sort((a,b)=>b.avgHook-a.avgHook).slice(0,8);
+  const tile = (label, val, sub, colour) => `
+    <div class="ks">
+      <div class="ks-title">${label}</div>
+      <div class="ks-value"${colour ? ` style="color:${colour}"` : ''}>${val}</div>
+      <div class="ks-sub">${sub}</div>
+    </div>`;
 
-  kpi.make('chart-synergy','bar',{
-    labels:top10.map(c=>c.name.length>18?c.name.slice(0,16)+'…':c.name),
-    datasets:[
-      {label:'IG Views',data:top10.map(c=>c.igViews),backgroundColor:'#e1306c',borderRadius:0},
-      {label:'TT Views',data:top10.map(c=>c.ttViews),backgroundColor:'#ff0050',borderRadius:0},
-      {label:'FB Views',data:top10.map(c=>c.fbViews),backgroundColor:'#1877f2',borderRadius:0},
+  const deltaTxt = (osValid !== null && bsValid !== null)
+    ? ((osValid - bsValid >= 0 ? '+' : '') + (osValid - bsValid).toFixed(0) + 'pt')
+    : '—';
+  const deltaCol = (osValid !== null && bsValid !== null)
+    ? (osValid >= bsValid ? '#04785C' : '#A32040') : null;
+
+  if (tiles) tiles.innerHTML =
+    tile('Creator Share of Views', share.toFixed(0) + '%',
+         `${kpi.fmtNum(osViews)} of ${kpi.fmtNum(osViews + bsViews)} organic views`) +
+    tile('Validated', osValid !== null ? osValid.toFixed(0) + '%' : '—',
+         `${osC.Good} Good · ${osC.Average} Average · ${osC.Poor} Poor`) +
+    tile('vs Brand Say', deltaTxt,
+         bsValid !== null ? `Owned content validates at ${bsValid.toFixed(0)}%` : 'No owned content scored',
+         deltaCol) +
+    tile('Top Creator', top ? top.name : '—',
+         top ? `${Math.round(top.good / top.scored * 100)}% Good · ${kpi.fmtNum(top.views)} views`
+             : `${creators} creators active`);
+
+  // CQR mix, creator against owned — the holistic comparison
+  kpi.make('chart-cr-vs-bs', 'bar', {
+    labels: ['Creator', 'Brand Say'],
+    datasets: [
+      { label: 'Good',    data: [osC.Good, bsC.Good],       backgroundColor: '#04785C' },
+      { label: 'Average', data: [osC.Average, bsC.Average], backgroundColor: '#8A5A12' },
+      { label: 'Poor',    data: [osC.Poor, bsC.Poor],       backgroundColor: '#A32040' }
     ]
-  },{responsive:true,maintainAspectRatio:false,plugins:{legend:kpi.legendDefaults(co)},scales:{x:{...kpi.scaleDefaults(co),stacked:true},y:{...kpi.scaleDefaults(co),stacked:true,beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>kpi.fmtNum(v)}}}});
+  }, { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+       plugins: { legend: kpi.legendDefaults(co) },
+       scales: { x: { ...kpi.scaleDefaults(co), stacked: true, beginAtZero: true,
+                      ticks: { ...kpi.scaleDefaults(co).ticks, precision: 0 } },
+                 y: { ...kpi.scaleDefaults(co), stacked: true } } });
 
-  kpi.make('chart-watch-time','bar',{
-    labels:top8Watch.map(c=>c.name.length>16?c.name.slice(0,14)+'…':c.name),
-    datasets:[{label:'Avg Watch Time (s)',data:top8Watch.map(c=>parseFloat(c.avgWatch.toFixed(1))),backgroundColor:top8Watch.map((_,i)=>`hsl(${180+i*12},70%,45%)`),borderRadius:0}]
-  },{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>v+'s'}},y:{...kpi.scaleDefaults(co)}}});
+  // The underlying signals, so the CQR mix can be read rather than trusted
+  const mean = (arr, f) => { const v = arr.map(f).filter(n => n > 0);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0; };
+  const watch = (arr) => mean(arr, d =>
+    d.igOrganic?.avgWatchTime || d.ttOrganic?.avgWatchTime || d.fbOrganic?.avgWatchTime || 0);
 
-  kpi.make('chart-hook-masters','bar',{
-    labels:top8Hook.map(c=>c.name.length>16?c.name.slice(0,14)+'…':c.name),
-    datasets:[{label:'Avg Hook Rate %',data:top8Hook.map(c=>parseFloat(c.avgHook.toFixed(1))),backgroundColor:top8Hook.map((_,i)=>`hsl(${260+i*8},65%,55%)`),borderRadius:0}]
-  },{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false}},scales:{x:{...kpi.scaleDefaults(co),beginAtZero:true,ticks:{...kpi.scaleDefaults(co).ticks,callback:v=>v+'%'}},y:{...kpi.scaleDefaults(co)}}});
-
-  const maxV = Math.max(...creators.map(c=>c.totalViews),1);
-  const rl   = ['gold','silver','bronze'];
-  const lbWrap = document.getElementById('creator-leaderboard-wrap');
-  if (lbWrap) lbWrap.innerHTML = `
-    <table class="creator-leaderboard">
-      <thead><tr><th style="width:28px">#</th><th>Creator</th><th style="width:50px">Videos</th><th style="width:160px">Total Views</th><th style="width:90px">Hook Rate</th><th style="width:100px">CQR Quality</th><th style="width:60px">Platforms</th></tr></thead>
-      <tbody>${creators.slice(0,15).map((c,i)=>{
-        const {Good:g,Average:a,Poor:p}=c.cqr;
-        const nameEl = c.profileUrl?`<a href="${c.profileUrl}" target="_blank">${c.name}</a>`:c.name;
-        const pills = [c.igViews>0?'<span class="cl-pill ig">IG</span>':'',c.ttViews>0?'<span class="cl-pill tt">TT</span>':'',c.fbViews>0?'<span class="cl-pill fb">FB</span>':''].join('');
-        const hc = c.avgHook>=30?'#04785C':c.avgHook>=20?'#8A5A12':'#A32040';
-        return `<tr>
-          <td class="cl-rank ${rl[i]||''}">${i+1}</td>
-          <td class="cl-name">${nameEl}</td>
-          <td style="text-align:center;font-weight:500">${c.videos}</td>
-          <td><div class="cl-bar-wrap"><div class="cl-bar-track"><div class="cl-bar-fill" style="width:${Math.round(c.totalViews/maxV*100)}%;background:#000050"></div></div><div class="cl-val">${kpi.fmtNum(c.totalViews)}</div></div></td>
-          <td style="text-align:center;font-weight:500;color:${hc}">${c.avgHook>0?kpi.pct(c.avgHook):'—'}</td>
-          <td>${g+a+p>0?`<div class="cqr-mini-bar">${g>0?`<div style="flex:${g};background:#04785C"></div>`:''} ${a>0?`<div style="flex:${a};background:#8A5A12"></div>`:''} ${p>0?`<div style="flex:${p};background:#A32040"></div>`:''}</div><div style="font-size:12px;color:var(--c-muted);margin-top:3px">${g}G/${a}A/${p}P</div>`:'<span style="color:var(--c-muted);font-size:13px">No paid data</span>'}</td>
-          <td><div class="cl-platform-pills">${pills}</div></td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>`;
+  kpi.make('chart-cr-signals', 'bar', {
+    labels: ['Hook rate %', 'Hold rate %', 'Avg watch (s)'],
+    datasets: [
+      { label: 'Creator',   data: [mean(os, d => d.hookRate), mean(os, d => d.holdRate), watch(os)],
+        backgroundColor: '#31117C' },
+      { label: 'Brand Say', data: [mean(bs, d => d.hookRate), mean(bs, d => d.holdRate), watch(bs)],
+        backgroundColor: '#A3A8C2' }
+    ]
+  }, { responsive: true, maintainAspectRatio: false,
+       plugins: { legend: kpi.legendDefaults(co) },
+       scales: { x: kpi.scaleDefaults(co),
+                 y: { ...kpi.scaleDefaults(co), beginAtZero: true } } });
 }
 
 // ── Section 4 ─────────────────────────────────────────────────────────────────
