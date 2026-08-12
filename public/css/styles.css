@@ -704,3 +704,16 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
 /* Modals scroll, so the menu must sit above their content */
 .modal-box .dd-menu,
 .pretest-modal .dd-menu{z-index:130}
+
+/* ---------- Creators tab toolbar ----------------------------------
+   Not using .filters — that class carries flex:1 1 100% for the topbar
+   row, which collapsed these controls to zero height here. */
+.cr-toolbar {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  margin-bottom:16px;
+}
+.cr-toolbar .search-input { min-width:240px; }
+.cr-count {
+  margin-left:auto; font:500 11px var(--font-mono); letter-spacing:.06em;
+  color:var(--ink-400); text-transform:uppercase;
+}
