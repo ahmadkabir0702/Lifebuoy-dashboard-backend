@@ -675,3 +675,11 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
   .dd-btn{max-width:100%}
   .dd-menu{max-width:calc(100vw - 32px)}
 }
+
+
+/* Filter-panel dropdowns: full width, value gets the whole control.
+   The <label> above already names the field. */
+.filters .dd-filter{display:block;width:100%}
+.filters .dd-btn{width:100%;max-width:none;justify-content:space-between}
+.filters .dd-val{flex:1;min-width:0;text-align:left}
+.filters .dd-menu{min-width:100%;max-width:none}
