@@ -32,12 +32,19 @@
   // in /img or /img/brands and be named "Lifebuoy.svg" or "lifebuoy.svg".
   // First one that loads wins; if none do, the monogram shows.
   function logoCandidates(name) {
-    const raw  = String(name || '').trim();
-    const slug = brandSlug(raw);
-    const out  = [];
+    const raw = String(name || '').trim();
+    // Database names rarely match filenames exactly: "Surf Excel" is filed as
+    // Surf.svg, "Pond's" as Ponds.svg. Try progressively looser forms —
+    // exact, hyphenated, punctuation stripped, then just the first word.
+    const compact = raw.replace(/[^A-Za-z0-9]/g, '');
+    const first   = raw.split(/[\s\-–—/&]+/)[0] || '';
+    const bases = [];
+    [raw, brandSlug(raw), compact, compact.toLowerCase(), first, first.toLowerCase()]
+      .forEach(b => { if (b && bases.indexOf(b) === -1) bases.push(b); });
+
+    const out = [];
     ['/img/', '/img/brands/'].forEach(dir => {
-      [raw, slug].forEach(base => {
-        if (!base) return;
+      bases.forEach(base => {
         ['svg', 'png', 'webp', 'jpg'].forEach(ext => {
           const url = dir + encodeURIComponent(base) + '.' + ext;
           if (out.indexOf(url) === -1) out.push(url);
