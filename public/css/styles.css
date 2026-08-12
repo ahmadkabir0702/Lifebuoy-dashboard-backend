@@ -501,7 +501,10 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
   background:var(--sel);border-color:var(--sel-line);
   color:var(--ink-900);font-weight:500;
 }
+/* The KPI campaign select is enhanced by dropdowns.js — size the control,
+   not the hidden native element. */
 .kfi-select{height:34px;min-width:170px}
+#kpi-filters-bar .dd-btn{height:34px;min-width:180px}
 
 /* ---------- Loading skeleton ---------------------------------------
    Placeholders in the shape of the real content. The sweep runs on a
@@ -683,3 +686,21 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
 .filters .dd-btn{width:100%;max-width:none;justify-content:space-between}
 .filters .dd-val{flex:1;min-width:0;text-align:left}
 .filters .dd-menu{min-width:100%;max-width:none}
+
+
+/* Enhanced selects inside modals: full width, same as the filters panel. */
+.modal-box .dd-filter,
+.creative-modal .dd-filter,
+.pretest-modal .dd-filter{display:block;width:100%}
+.modal-box .dd-btn,
+.creative-modal .dd-btn,
+.pretest-modal .dd-btn{width:100%;max-width:none;justify-content:space-between;height:38px}
+.modal-box .dd-val,
+.creative-modal .dd-val,
+.pretest-modal .dd-val{flex:1;min-width:0;text-align:left}
+.modal-box .dd-menu,
+.creative-modal .dd-menu,
+.pretest-modal .dd-menu{min-width:100%;max-width:none}
+/* Modals scroll, so the menu must sit above their content */
+.modal-box .dd-menu,
+.pretest-modal .dd-menu{z-index:130}
