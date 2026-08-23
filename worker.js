@@ -30,18 +30,52 @@ const { notifySuccess, notifyFailure } = require('./notify');
 // pulled for new users — so it is an env var, changeable without a deploy.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
+// Cost levers, all env-tunable so they can be tried without a deploy.
+//   GEMINI_THINKING_BUDGET  thinking tokens bill at OUTPUT rates. Describing
+//                           what is on screen needs little reasoning, so a low
+//                           budget is cheaper and faster. -1 = model default,
+//                           0 = off where the model allows it.
+//   GEMINI_MEDIA_RESOLUTION video input is ~60% of the cost. 'low' cuts it
+//                           substantially; the trade is small on-screen text.
+const THINKING_BUDGET = process.env.GEMINI_THINKING_BUDGET === undefined
+  ? null : Number(process.env.GEMINI_THINKING_BUDGET);
+const MEDIA_RESOLUTION = process.env.GEMINI_MEDIA_RESOLUTION || null;
+
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST
   || 'instagram-tiktok-youtube-downloader.p.rapidapi.com';
 
-const PROMPT = `Watch this video carefully. Extract the following:
-1. "hook": A 1-2 sentence description of the opening hook.
-2. "seg1": (0-25%) Describe the setting, who appears, what action or message is shown.
-3. "seg2": (25-50%) Describe how the narrative develops.
-4. "seg3": (50-75%) Describe the core message or product moment.
-5. "seg4": (75-100%) Describe the closing and call to action.
-6. "duration": The exact length of the video in seconds (number).
+// Segment granularity. Fixed intervals, not scene changes: retention data is
+// time-indexed, so to say "hold rate collapses at 6s and here is what was on
+// screen at 6s" the descriptions have to sit on the same time grid.
+const SEG_SECONDS = Number(process.env.SEGMENT_SECONDS || 2);
+const MAX_SEGMENTS = Number(process.env.MAX_SEGMENTS || 60);
+
+function buildPrompt(hintDuration) {
+  const dur = hintDuration && hintDuration > 0 ? hintDuration : null;
+  const n = dur ? Math.min(Math.ceil(dur / SEG_SECONDS), MAX_SEGMENTS) : null;
+
+  return `Watch this video carefully and describe it on a fixed time grid.
+
+Return ONE JSON object with these keys:
+
+"duration": the exact length of the video in seconds (number).
+
+"hook": 1-2 sentences describing the opening hook — what grabs attention in the first two seconds.
+
+"timeline": an array of objects, one per ${SEG_SECONDS}-second window, covering the whole video from 0 to the end${n ? ` (about ${n} entries)` : ''}. Each object:
+  { "t": <window start in seconds, a multiple of ${SEG_SECONDS}>,
+    "d": "<one sentence, present tense, describing what is on screen and what is said or heard in that window>" }
+Cover EVERY window in order with no gaps. If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover.
+
+"seg1": (0-25%) 2-3 sentences on the setting, who appears, and the opening action or message.
+"seg2": (25-50%) 2-3 sentences on how the narrative develops.
+"seg3": (50-75%) 2-3 sentences on the core message or product moment.
+"seg4": (75-100%) 2-3 sentences on the closing and call to action.
+
 Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys — the dashboard labels segments by position, so a missing key mislabels the rest.
-Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
+
+Return only the JSON object. No markdown, no commentary.`;
+}
 
 // ── Step 1: CDN link ──────────────────────────────────────────────────────────
 async function resolveMediaUrl(mediaUrl) {
@@ -96,7 +130,7 @@ async function streamToFile(url, destPath) {
 }
 
 // ── Steps 3-4: Gemini ─────────────────────────────────────────────────────────
-async function analyseVideo(ai, videoPath) {
+async function analyseVideo(ai, videoPath, hintDuration) {
   const geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
   try {
     let state = await ai.files.get({ name: geminiFile.name });
@@ -111,15 +145,75 @@ async function analyseVideo(ai, videoPath) {
     const result = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: [{ role: 'user', parts: [
-        { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
-        { text: PROMPT },
+        {
+          fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' },
+          ...(MEDIA_RESOLUTION
+            ? { videoMetadata: { mediaResolution: `MEDIA_RESOLUTION_${MEDIA_RESOLUTION.toUpperCase()}` } }
+            : {}),
+        },
+        { text: buildPrompt(hintDuration) },
       ]}],
-      config: { responseMimeType: 'application/json', maxOutputTokens: 2000 },
+      // A 90s video at 2s granularity is ~45 timeline entries plus the four
+      // quartile segments, and thinking tokens count toward this ceiling.
+      config: {
+        responseMimeType: 'application/json',
+        maxOutputTokens: 16000,
+        ...(THINKING_BUDGET !== null && Number.isFinite(THINKING_BUDGET)
+          ? { thinkingConfig: { thinkingBudget: THINKING_BUDGET } }
+          : {}),
+      },
     });
+    // Log real token usage. Thinking tokens bill at output rates and are the
+    // hardest part of the cost to predict, so measure rather than estimate.
+    const u = result.usageMetadata || {};
+    const inTok = u.promptTokenCount || 0;
+    const outTok = u.candidatesTokenCount || 0;
+    const think = u.thoughtsTokenCount || 0;
+    if (inTok || outTok) {
+      const IN_RATE = Number(process.env.GEMINI_IN_RATE || 0.75) / 1e6;
+      const OUT_RATE = Number(process.env.GEMINI_OUT_RATE || 3.75) / 1e6;
+      const cost = inTok * IN_RATE + (outTok + think) * OUT_RATE;
+      console.log(`[gemini] model=${GEMINI_MODEL} in=${inTok} out=${outTok} thinking=${think} ` +
+                  `total=${u.totalTokenCount || inTok + outTok + think} cost=$${cost.toFixed(4)}`);
+    }
+
     return JSON.parse(result.text.replace(/```json|```/g, '').trim());
   } finally {
     try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {}
   }
+}
+
+/**
+ * Models drift on shape: t may come back as "0", "0s" or "00:04", and windows
+ * can arrive out of order or duplicated. Normalise to { t: <number>, d: <string> }
+ * sorted and de-duplicated, so anything reading this can trust the grid.
+ */
+function normaliseTimeline(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+
+  for (const item of raw) {
+    if (!item) continue;
+    const d = String(item.d || item.desc || item.description || '').trim();
+    if (!d) continue;
+
+    let t = item.t !== undefined ? item.t : (item.start !== undefined ? item.start : item.time);
+    if (typeof t === 'string') {
+      const mmss = t.match(/^(\d+):(\d+(?:\.\d+)?)$/);
+      t = mmss ? Number(mmss[1]) * 60 + Number(mmss[2]) : parseFloat(t.replace(/[^\d.]/g, ''));
+    }
+    t = Number(t);
+    if (!Number.isFinite(t) || t < 0) continue;
+
+    t = Math.round(t * 10) / 10;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push({ t, d });
+  }
+
+  out.sort((x, y) => x.t - y.t);
+  return out.slice(0, MAX_SEGMENTS);
 }
 
 // ── The job ───────────────────────────────────────────────────────────────────
@@ -138,7 +232,7 @@ function makeProcessor(ai) {
       await streamToFile(meta.download_url, videoPath);
 
       await job.updateProgress({ step: 'analysing', pct: 60 });
-      const a = await analyseVideo(ai, videoPath);
+      const a = await analyseVideo(ai, videoPath, typeof meta.duration === 'number' ? meta.duration : null);
 
       // A partial analysis is not worth storing — the dashboard labels
       // segments by position, so a missing one mislabels the rest.
@@ -146,6 +240,11 @@ function makeProcessor(ai) {
         .filter(k => !a[k] || !String(a[k]).trim());
       if (missing.length) {
         throw new Error(`Analysis incomplete — missing ${missing.join(', ')}.`);
+      }
+
+      const timeline = normaliseTimeline(a.timeline);
+      if (!timeline.length) {
+        throw new Error('Analysis incomplete — no timeline returned.');
       }
 
       // Gemini estimates duration by watching, and that drives the retention
@@ -164,20 +263,22 @@ function makeProcessor(ai) {
         `insert into creatives
            (creative_id, brand_id, date, campaign, type, is_repurposed,
             original_creative_id, content_type, ig_link, fb_link, tt_link,
-            content_hook, seg1, seg2, seg3, seg4, duration_s)
+            content_hook, seg1, seg2, seg3, seg4, duration_s, segments)
          values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',
-                 $8,$9,$10,$11,$12,$13,$14,$15,$16)
+                 $8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          on conflict (creative_id) do update set
            content_hook = excluded.content_hook,
            seg1 = excluded.seg1, seg2 = excluded.seg2,
            seg3 = excluded.seg3, seg4 = excluded.seg4,
-           duration_s = coalesce(excluded.duration_s, creatives.duration_s)`,
+           duration_s = coalesce(excluded.duration_s, creatives.duration_s),
+           segments = excluded.segments`,
         [creativeId, d.brand, d.date, d.campaign, d.type, d.repurposed,
          d.originalId, d.ig, d.fb, d.tt,
-         a.hook, a.seg1, a.seg2, a.seg3, a.seg4, safeDur]
+         a.hook, a.seg1, a.seg2, a.seg3, a.seg4, safeDur,
+         JSON.stringify(timeline)]
       );
 
-      console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s) and added`);
+      console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s, ${timeline.length} segments) and added`);
 
       notifySuccess({
         creativeId, brand: d.brand, campaign: d.campaign, platform,
@@ -187,6 +288,7 @@ function makeProcessor(ai) {
         status: 'completed', creativeId, platform,
         hook: a.hook || null,
         segments: [a.seg1, a.seg2, a.seg3, a.seg4],
+        timelineCount: timeline.length,
         duration: safeDur,
         caption: meta.caption || '',
         thumbnail: meta.thumbnail_url || '',
@@ -239,7 +341,7 @@ function startWorker(ai) {
   return worker;
 }
 
-module.exports = { startWorker };
+module.exports = { startWorker, buildPrompt, normaliseTimeline };
 
 // Standalone mode: node worker.js
 if (require.main === module) {
