@@ -7,7 +7,7 @@
  *   1. resolve a CDN link via RapidAPI
  *   2. stream the mp4 to a temp file
  *   3. upload to Gemini, wait for processing
- *   4. ask for hook + four segments + duration
+ *   4. ask for hook + a fixed-interval timeline + duration
  *   5. write the analysis back to `creatives`
  *
  * Runs two ways, same code:
@@ -50,6 +50,30 @@ const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST
 const SEG_SECONDS = Number(process.env.SEGMENT_SECONDS || 2);
 const MAX_SEGMENTS = Number(process.env.MAX_SEGMENTS || 60);
 
+// Structured output. responseMimeType alone asks for JSON without saying what
+// shape; a schema constrains it, which is what stops the model returning an
+// object where an array is expected or renaming keys.
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    duration: { type: 'number' },
+    hook: { type: 'string' },
+    timeline: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          t: { type: 'number' },
+          d: { type: 'string' },
+        },
+        required: ['t', 'd'],
+      },
+    },
+  },
+  required: ['duration', 'hook', 'timeline'],
+  propertyOrdering: ['duration', 'hook', 'timeline'],
+};
+
 function buildPrompt(hintDuration) {
   const dur = hintDuration && hintDuration > 0 ? hintDuration : null;
   const n = dur ? Math.min(Math.ceil(dur / SEG_SECONDS), MAX_SEGMENTS) : null;
@@ -62,17 +86,10 @@ Return ONE JSON object with these keys:
 
 "hook": 1-2 sentences describing the opening hook — what grabs attention in the first two seconds.
 
-"timeline": an array of objects, one per ${SEG_SECONDS}-second window, covering the whole video from 0 to the end${n ? ` (about ${n} entries)` : ''}. Each object:
+"timeline": an array of ${n ? `exactly ${n}` : ''} objects, one per ${SEG_SECONDS}-second window, covering the whole video from 0 to the end with no gaps. Each object:
   { "t": <window start in seconds, a multiple of ${SEG_SECONDS}>,
     "d": "<one sentence, present tense, describing what is on screen and what is said or heard in that window>" }
-Cover EVERY window in order with no gaps. If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover.
-
-"seg1": (0-25%) 2-3 sentences on the setting, who appears, and the opening action or message.
-"seg2": (25-50%) 2-3 sentences on how the narrative develops.
-"seg3": (50-75%) 2-3 sentences on the core message or product moment.
-"seg4": (75-100%) 2-3 sentences on the closing and call to action.
-
-Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys — the dashboard labels segments by position, so a missing key mislabels the rest.
+Cover EVERY window in order. Do NOT merge, skip or group windows — a window where little happens still gets its own entry saying so. ${n ? `The array must contain ${n} entries: t = 0, ${SEG_SECONDS}, ${SEG_SECONDS * 2}, and so on up to ${(n - 1) * SEG_SECONDS}.` : ''} If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover.
 
 Return only the JSON object. No markdown, no commentary.`;
 }
@@ -157,6 +174,7 @@ async function analyseVideo(ai, videoPath, hintDuration) {
       // quartile segments, and thinking tokens count toward this ceiling.
       config: {
         responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
         maxOutputTokens: 16000,
         ...(THINKING_BUDGET !== null && Number.isFinite(THINKING_BUDGET)
           ? { thinkingConfig: { thinkingBudget: THINKING_BUDGET } }
@@ -236,15 +254,39 @@ function makeProcessor(ai) {
 
       // A partial analysis is not worth storing — the dashboard labels
       // segments by position, so a missing one mislabels the rest.
-      const missing = ['hook', 'seg1', 'seg2', 'seg3', 'seg4']
-        .filter(k => !a[k] || !String(a[k]).trim());
-      if (missing.length) {
-        throw new Error(`Analysis incomplete — missing ${missing.join(', ')}.`);
+      if (!a.hook || !String(a.hook).trim()) {
+        throw new Error('Analysis incomplete — no hook returned.');
       }
 
       const timeline = normaliseTimeline(a.timeline);
       if (!timeline.length) {
         throw new Error('Analysis incomplete — no timeline returned.');
+      }
+
+      // Models save output tokens by grouping windows ("0:14-0:30: she keeps
+      // talking"). That returns valid JSON with a sparse timeline, which would
+      // otherwise be stored as if complete. Check coverage against duration
+      // and fail the job so the retry gets another go.
+      const durForCheck = (typeof meta.duration === 'number' && meta.duration > 0)
+        ? meta.duration
+        : (Number.isFinite(parseFloat(a.duration)) ? parseFloat(a.duration) : null);
+
+      if (durForCheck) {
+        const expected = Math.min(Math.ceil(durForCheck / SEG_SECONDS), MAX_SEGMENTS);
+        // 70%: allows a window or two of slack at the tail without accepting
+        // a timeline that has clearly been collapsed.
+        if (timeline.length < Math.floor(expected * 0.7)) {
+          throw new Error(
+            `Timeline too sparse — got ${timeline.length} windows for ${durForCheck.toFixed(0)}s, ` +
+            `expected about ${expected}. The model grouped intervals.`
+          );
+        }
+        const lastCovered = timeline[timeline.length - 1].t + SEG_SECONDS;
+        if (lastCovered < durForCheck * 0.8) {
+          throw new Error(
+            `Timeline stops at ${lastCovered.toFixed(0)}s of ${durForCheck.toFixed(0)}s — incomplete coverage.`
+          );
+        }
       }
 
       // Gemini estimates duration by watching, and that drives the retention
@@ -263,19 +305,16 @@ function makeProcessor(ai) {
         `insert into creatives
            (creative_id, brand_id, date, campaign, type, is_repurposed,
             original_creative_id, content_type, ig_link, fb_link, tt_link,
-            content_hook, seg1, seg2, seg3, seg4, duration_s, segments)
+            content_hook, duration_s, segments)
          values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',
-                 $8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                 $8,$9,$10,$11,$12,$13)
          on conflict (creative_id) do update set
            content_hook = excluded.content_hook,
-           seg1 = excluded.seg1, seg2 = excluded.seg2,
-           seg3 = excluded.seg3, seg4 = excluded.seg4,
            duration_s = coalesce(excluded.duration_s, creatives.duration_s),
            segments = excluded.segments`,
         [creativeId, d.brand, d.date, d.campaign, d.type, d.repurposed,
          d.originalId, d.ig, d.fb, d.tt,
-         a.hook, a.seg1, a.seg2, a.seg3, a.seg4, safeDur,
-         JSON.stringify(timeline)]
+         a.hook, safeDur, JSON.stringify(timeline)]
       );
 
       console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s, ${timeline.length} segments) and added`);
@@ -287,7 +326,6 @@ function makeProcessor(ai) {
       return {
         status: 'completed', creativeId, platform,
         hook: a.hook || null,
-        segments: [a.seg1, a.seg2, a.seg3, a.seg4],
         timelineCount: timeline.length,
         duration: safeDur,
         caption: meta.caption || '',
