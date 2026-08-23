@@ -93,7 +93,8 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 
 
-
+// Background download queue — only mounts when REDIS_URL is set
+require('./media-queue').mountMediaQueue(app);
 
 // All Postgres-backed API routes live in routes.js
 require('./routes')(app, { ai, youtubedl });
