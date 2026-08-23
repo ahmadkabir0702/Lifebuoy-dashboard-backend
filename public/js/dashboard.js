@@ -757,6 +757,7 @@ async function confirmAction() {
 }
 
 function openAddCreativeModal() {
+  resetAddCreativeForm();
   document.getElementById('addCreativeModal').style.display = 'flex';
   const campaignSelect = document.getElementById('ac-campaign');
   const campaigns = CAMPAIGNS.length > 0
@@ -942,10 +943,20 @@ async function submitCreative(e) {
 }
 
 function showQueuedConfirmation(result) {
-  const box = document.getElementById('ac-progress-container');
-  if (box) box.style.display = 'block';
+  const form = document.getElementById('addCreativeForm');
+  if (!form) return;
+
+  // The confirmation has to live OUTSIDE the form: hiding the form to show it
+  // would hide the confirmation too, leaving an empty modal.
+  let box = document.getElementById('ac-queued-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'ac-queued-box';
+    form.parentNode.insertBefore(box, form.nextSibling);
+  }
+
   const queued = result.queued !== false;
-  const html = `
+  box.innerHTML = `
     <div class="ac-queued">
       <div class="ac-queued-title">${queued ? 'Queued for analysis' : 'Creative added'}</div>
       <p class="ac-queued-body">${
@@ -955,25 +966,30 @@ function showQueuedConfirmation(result) {
       }</p>
       ${queued ? '<p class="ac-queued-note">If anything goes wrong you will get an email explaining why, and nothing will be added.</p>' : ''}
       <div class="ac-queued-actions">
-        <button class="btn-outline" onclick="closeAddCreativeModal()">Done</button>
-        <button class="btn-outline primary" onclick="resetAddCreativeForm()">Add another</button>
+        <button type="button" class="btn-outline" onclick="closeAddCreativeModal()">Done</button>
+        <button type="button" class="btn-outline primary" onclick="resetAddCreativeForm()">Add another</button>
       </div>
     </div>`;
-  if (box) box.innerHTML = html;
-  // The form is done with; hide it so the confirmation is the only thing showing.
-  const form = document.getElementById('addCreativeForm');
-  if (form) form.style.display = 'none';
+  box.style.display = 'block';
+  form.style.display = 'none';
+  document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
 function resetAddCreativeForm() {
   const form = document.getElementById('addCreativeForm');
-  const box  = document.getElementById('ac-progress-container');
-  if (form) { form.reset(); form.style.display = ''; }
+  const box  = document.getElementById('ac-queued-box');
   if (box)  { box.innerHTML = ''; box.style.display = 'none'; }
-  const btn = document.getElementById('ac-confirm-btn');
-  if (btn) btn.disabled = false;
-  const cancel = document.getElementById('ac-cancel-btn');
-  if (cancel) cancel.disabled = false;
+  if (form) { form.reset(); form.style.display = ''; }
+  const prog = document.getElementById('ac-progress-container');
+  if (prog) prog.style.display = 'none';
+  const summary = document.getElementById('ac-summary');
+  if (summary) { summary.innerHTML = ''; summary.style.display = 'none'; }
+  ['ac-confirm-btn', 'ac-cancel-btn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) { b.disabled = false; b.style.display = ''; }
+  });
+  const orig = document.getElementById('ac-original-id');
+  if (orig) orig.style.display = 'none';
   document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
