@@ -26,6 +26,10 @@ const IORedis = require('ioredis');
 const { query } = require('./db');
 const { notifySuccess, notifyFailure } = require('./notify');
 
+// Gemini model. Google retires these on their own schedule — 2.5-flash was
+// pulled for new users — so it is an env var, changeable without a deploy.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+
 const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST
   || 'instagram-tiktok-youtube-downloader.p.rapidapi.com';
 
@@ -105,7 +109,7 @@ async function analyseVideo(ai, videoPath) {
     if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
 
     const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: GEMINI_MODEL,
       contents: [{ role: 'user', parts: [
         { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
         { text: PROMPT },
