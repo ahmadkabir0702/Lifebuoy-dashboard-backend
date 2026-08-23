@@ -924,14 +924,14 @@ async function submitCreative(e) {
 
     const result = await res.json();
     if (result.success) {
-      setProgress(100, 'Saved.', '#04785C');
-      showCreativeSummary(result);
+      // Queued work is confirmed, not watched. A progress bar here would be
+      // polling theatre — the analysis takes minutes and the result arrives
+      // by email, so say what happened and let the user get on with it.
+      showQueuedConfirmation(result);
     } else {
       setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#A32040');
       progressBar.style.background = '#A32040';
-      // The row may already exist even when the analysis failed.
-      if (result.creativeId) showCreativeSummary(result);
-      else resetSubmitUI(3000);
+      resetSubmitUI(3000);
     }
   } catch (err) {
     console.error(err);
@@ -939,6 +939,42 @@ async function submitCreative(e) {
     progressBar.style.background = '#A32040';
     resetSubmitUI(3000);
   }
+}
+
+function showQueuedConfirmation(result) {
+  const box = document.getElementById('ac-progress-container');
+  if (box) box.style.display = 'block';
+  const queued = result.queued !== false;
+  const html = `
+    <div class="ac-queued">
+      <div class="ac-queued-title">${queued ? 'Queued for analysis' : 'Creative added'}</div>
+      <p class="ac-queued-body">${
+        queued
+          ? 'The video is being downloaded and analysed. Once it is processed the creative will appear in the Creative Hub, and the creative ID will be emailed to you for the ad name.'
+          : (result.message || 'Added.')
+      }</p>
+      ${queued ? '<p class="ac-queued-note">If anything goes wrong you will get an email explaining why, and nothing will be added.</p>' : ''}
+      <div class="ac-queued-actions">
+        <button class="btn-outline" onclick="closeAddCreativeModal()">Done</button>
+        <button class="btn-outline primary" onclick="resetAddCreativeForm()">Add another</button>
+      </div>
+    </div>`;
+  if (box) box.innerHTML = html;
+  // The form is done with; hide it so the confirmation is the only thing showing.
+  const form = document.getElementById('addCreativeForm');
+  if (form) form.style.display = 'none';
+}
+
+function resetAddCreativeForm() {
+  const form = document.getElementById('addCreativeForm');
+  const box  = document.getElementById('ac-progress-container');
+  if (form) { form.reset(); form.style.display = ''; }
+  if (box)  { box.innerHTML = ''; box.style.display = 'none'; }
+  const btn = document.getElementById('ac-confirm-btn');
+  if (btn) btn.disabled = false;
+  const cancel = document.getElementById('ac-cancel-btn');
+  if (cancel) cancel.disabled = false;
+  document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
 function resetSubmitUI(delay = 0) {
