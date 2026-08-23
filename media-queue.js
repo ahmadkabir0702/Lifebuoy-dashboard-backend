@@ -65,6 +65,7 @@ function mountMediaQueue(app) {
       return res.json({
         id: job.id,
         state: await job.getState(),
+        progress: job.progress || null,
         result: job.returnvalue || null,
         failedReason: job.failedReason || null,
       });
@@ -74,6 +75,9 @@ function mountMediaQueue(app) {
   });
 
   app.use('/api/media', router);
+  // routes.js reaches the queue through this rather than importing it, so the
+  // add-creative route works unchanged when Redis is absent.
+  app.set('mediaQueue', downloadQueue);
   console.log('[media-queue] mounted at /api/media');
   return downloadQueue;
 }
