@@ -956,6 +956,168 @@ function showQueuedConfirmation(result) {
   }
 
   const queued = result.queued !== false;
+  box.innerHTML = queued ? `
+    <div class="ac-queued">
+      <div class="ac-queued-head">
+        <span class="ac-queued-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+          </svg>
+        </span>
+        <div>
+          <div class="ac-queued-title">Added to the queue</div>
+          <p class="ac-queued-body">
+            The video is being downloaded and analysed. This usually takes a few minutes.
+          </p>
+        </div>
+      </div>
+
+      <ul class="ac-queued-steps">
+        <li>You will get an email with the creative ID once it is done</li>
+        <li>The creative appears in the Creative Hub at the same time</li>
+        <li>If it fails you will get an email explaining why, and nothing is added</li>
+      </ul>
+
+      <p class="ac-queued-note">You can close this and keep working.</p>
+
+      <div class="ac-queued-actions">
+        <button type="button" class="btn-outline" onclick="closeAddCreativeModal()">Close</button>
+        <button type="button" class="btn-outline primary" onclick="resetAddCreativeForm()">Add another</button>
+      </div>
+    </div>` : `
+    <div class="ac-queued">
+      <div class="ac-queued-title">Creative added</div>
+      <p class="ac-queued-body">${result.message || 'Added.'}</p>
+      <div class="ac-queued-actions">
+        <button type="button" class="btn-outline" onclick="closeAddCreativeModal()">Close</button>
+        <button type="button" class="btn-outline primary" onclick="resetAddCreativeForm()">Add another</button>
+      </div>
+    </div>`;
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div class="brief-hook" style="margin-bottom:12px">
+      <span class="brief-hook-label">Creative ID</span>
+      <div class="brief-hook-text" style="font-family:var(--font-mono);font-size:13px">${result.creativeId}</div>
+      <div style="font:400 12px/16px var(--font-ui);color:var(--ink-500);margin-top:6px">
+        Add this after the pipe in the ad name when the asset is boosted.
+      </div>
+    </div>
+    ${a.duration ? `<div class="organic-stat-row"><span class="organic-stat-label">Duration</span><span class="organic-stat-val">${a.duration}s</span></div>` : ''}
+    ${failed ? `
+      <div class="warning-badge" style="display:block;margin-top:12px">
+        Analysis did not complete
+      </div>
+      <div style="font:400 13px/18px var(--font-ui);color:var(--ink-500);margin-top:8px">
+        The creative is saved. Descriptions can be generated again without re-entering anything.
+      </div>` : `
+      ${a.hook ? `<div class="brief-hook" style="margin-top:12px"><span class="brief-hook-label">Hook</span><div class="brief-hook-text">${a.hook}</div></div>` : ''}
+      ${segs.length ? `<div class="brief-segs" style="margin-top:12px">${
+        segs.map((s,i)=>`<div class="seg-row"><div class="seg-label">${labels[i]||''}</div><div class="seg-text">${s}</div></div>`).join('')
+      }</div>` : ''}`}
+  `;
+}
+
+async function regenerateDescription() {
+  const btn = document.getElementById('ac-regen-btn');
+  const orig = btn.innerText;
+  btn.innerText = 'Analysing...'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/regenerate-description', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creative_id: LAST_CREATIVE_ID }),
+      signal: AbortSignal.timeout(120000)
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    showCreativeSummary(result);
+  } catch (err) {
+    // yt-dlp writes warnings to stderr; the real cause is the last line.
+    const lines = String(err.message).split('\n').filter(l => l.trim() && !/^\s*(WARNING|It is strongly|Run "yt-dlp|To suppress|Pre-merged|To prioritize)/.test(l));
+    alert('Analysis failed: ' + (lines.pop() || err.message).trim());
+  } finally {
+    btn.innerText = orig; btn.disabled = false;
+  }
+}
+
+async function submitCreative(e) {
+  e.preventDefault();
+  const campaign = document.getElementById('ac-campaign').value;
+  const type = document.getElementById('ac-type').value;
+  const date = document.getElementById('ac-date').value;
+  const ig = document.getElementById('ac-ig').value;
+  const fb = document.getElementById('ac-fb').value;
+  const tt = document.getElementById('ac-tt').value;
+  const repurposed = document.getElementById('ac-repurposed').value || "No";
+  const originalId = document.getElementById('ac-original-id').value || "";
+  
+  const btnConfirm = document.getElementById('ac-confirm-btn');
+  const btnCancel = document.getElementById('ac-cancel-btn');
+  const progressContainer = document.getElementById('ac-progress-container');
+  const progressText = document.getElementById('ac-progress-text');
+  const progressBar = document.getElementById('ac-progress-bar');
+
+  btnConfirm.disabled = true;
+  btnCancel.disabled = true;
+  document.getElementById('addCreativeModal').style.pointerEvents = 'none';
+  progressContainer.style.display = 'block';
+
+  const setProgress = (pct, msg, color) => {
+    progressBar.style.width = pct + '%';
+    progressBar.style.background = color || '#000050';
+    progressText.innerText = msg;
+  };
+
+  setProgress(10, 'Submitting creative details...', '#000050');
+
+  try {
+    const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#000050'), 800);
+    const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#000050'), 4000);
+    const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#000050'), 15000);
+    const t4 = setTimeout(() => setProgress(90, 'Saving to database...', '#000050'), 35000);
+
+    const res = await fetch('/api/add-creative', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME }),
+      signal: AbortSignal.timeout(120000)
+    });
+    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
+
+    const result = await res.json();
+    if (result.success) {
+      // Queued work is confirmed, not watched. A progress bar here would be
+      // polling theatre — the analysis takes minutes and the result arrives
+      // by email, so say what happened and let the user get on with it.
+      showQueuedConfirmation(result);
+    } else {
+      setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#A32040');
+      progressBar.style.background = '#A32040';
+      resetSubmitUI(3000);
+    }
+  } catch (err) {
+    console.error(err);
+    setProgress(100, 'Network error — could not reach server.', '#A32040');
+    progressBar.style.background = '#A32040';
+    resetSubmitUI(3000);
+  }
+}
+
+function showQueuedConfirmation(result) {
+  const form = document.getElementById('addCreativeForm');
+  if (!form) return;
+
+  // The confirmation has to live OUTSIDE the form: hiding the form to show it
+  // would hide the confirmation too, leaving an empty modal.
+  let box = document.getElementById('ac-queued-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'ac-queued-box';
+    form.parentNode.insertBefore(box, form.nextSibling);
+  }
+
+  const queued = result.queued !== false;
   box.innerHTML = `
     <div class="ac-queued">
       <div class="ac-queued-title">${queued ? 'Queued for analysis' : 'Creative added'}</div>
