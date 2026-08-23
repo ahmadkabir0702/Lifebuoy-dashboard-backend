@@ -196,6 +196,8 @@ async function buildPayload(brandId) {
 
       // content
       contentHook: c.content_hook || '',
+      // Older creatives still carry quartile text; new ones do not. Kept so
+      // existing rows keep rendering rather than losing their brief.
       segments: [c.seg1, c.seg2, c.seg3, c.seg4].filter(Boolean),
       // Fixed-interval descriptions: [{ t: seconds, d: text }]. Time-indexed so
       // it can be read against the retention curve.
