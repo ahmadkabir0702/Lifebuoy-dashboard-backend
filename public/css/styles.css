@@ -777,3 +777,5 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
 .ac-queued-body{font:400 14px/21px var(--font);color:var(--ink-600);margin-bottom:10px}
 .ac-queued-note{font:400 13px/19px var(--font);color:var(--ink-400);margin-bottom:16px}
 .ac-queued-actions{display:flex;gap:8px;justify-content:flex-end}
+
+#ac-queued-box{padding:4px 0 0}
