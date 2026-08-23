@@ -13,11 +13,36 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Sessions live in Redis when it is available. The default MemoryStore keeps
+// them in this process, so every deploy logged everyone out and the browser
+// was left holding a cookie for a session that no longer existed — which is
+// what produced "Not authenticated" right after a deploy.
+let sessionStore;
+if (process.env.REDIS_URL) {
+  try {
+    const RedisStore = require('connect-redis').default || require('connect-redis');
+    const IORedis = require('ioredis');
+    const sessionRedis = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+    sessionRedis.on('error', e => console.error('[session] redis:', e.message));
+    sessionStore = new RedisStore({ client: sessionRedis, prefix: 'sess:' });
+    console.log('[session] using Redis store');
+  } catch (e) {
+    console.error('[session] Redis store unavailable, falling back to memory:', e.message);
+  }
+} else {
+  console.warn('[session] REDIS_URL not set — sessions reset on every restart.');
+}
+
+// Render terminates TLS at its proxy, so without this Express sees the request
+// as plain HTTP and a secure cookie would never be set on the custom domain.
+app.set('trust proxy', 1);
+
 app.use(session({
+  store: sessionStore,
   secret: process.env.SESSION_SECRET || 'changeme-set-in-env',
   resave: false,
   saveUninitialized: false,
-  cookie: { 
+  cookie: {
     maxAge: 8 * 60 * 60 * 1000,
     httpOnly: true,
     sameSite: 'lax'
