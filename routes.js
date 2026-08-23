@@ -265,12 +265,11 @@ app.get('/api/brands', async (req, res) => {
 
       await query(
         `update creatives
-            set content_hook = $2, seg1 = $3, seg2 = $4, seg3 = $5, seg4 = $6,
-                duration_s = coalesce($7, duration_s),
-                segments = coalesce($8::jsonb, segments)
+            set content_hook = $2,
+                duration_s = coalesce($3, duration_s),
+                segments = coalesce($4::jsonb, segments)
           where creative_id = $1`,
-        [creative_id, a.hook || null, a.seg1 || null, a.seg2 || null,
-         a.seg3 || null, a.seg4 || null, safeDur,
+        [creative_id, a.hook || null, safeDur,
          // coalesce: never wipe an existing timeline if this run returned none.
          (() => { const t = normaliseTimeline(a.timeline); return t.length ? JSON.stringify(t) : null; })()]
       );
