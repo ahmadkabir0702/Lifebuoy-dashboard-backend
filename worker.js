@@ -28,8 +28,13 @@ const worker = new Worker('creative-downloads', async (job) => {
     const apiResponse = await axios.request(options);
     const data = apiResponse.data;
 
-    if (!data || !data.download_url) {
-        throw new Error(`RapidAPI failed to return a download_url for ${mediaUrl}`);
+    // The API signals failure with ok:false and still returns HTTP 200, so
+    // checking the status code alone is not enough.
+    if (!data || data.ok === false) {
+        throw new Error(`API rejected ${mediaUrl}: ${data && (data.error || data.message) || 'unknown reason'}`);
+    }
+    if (!data.download_url) {
+        throw new Error(`No download_url returned for ${mediaUrl}`);
     }
 
     const rawVideoUrl = data.download_url;
@@ -44,10 +49,17 @@ const worker = new Worker('creative-downloads', async (job) => {
     const destinationPath = path.join(uploadsDir, outputFileName);
     const writer = fs.createWriteStream(destinationPath);
 
+    // CDN links are signed and short-lived (the x-expires param), so fetch now.
+    // Instagram's CDN rejects requests without a browser-ish user agent.
     const videoStream = await axios({
         url: rawVideoUrl,
         method: 'GET',
         responseType: 'stream',
+        timeout: 180000,
+        maxRedirects: 5,
+        headers: {
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        },
     });
 
     videoStream.data.pipe(writer);
@@ -55,22 +67,32 @@ const worker = new Worker('creative-downloads', async (job) => {
     return new Promise((resolve, reject) => {
         writer.on('finish', () => {
             console.log(`[Job ${job.id}] Successfully saved: ${outputFileName}`);
+            // Instagram returns duration: null while TikTok returns seconds, so
+            // treat duration as optional downstream rather than assuming a number.
             resolve({
                 status: 'completed',
                 fileName: outputFileName,
-                platform: platform,
+                filePath: destinationPath,
+                platform,
+                creativeId: job.data.creativeId || null,
+                sourceId: data.id || null,
                 caption: data.caption || '',
                 thumbnail: data.thumbnail_url || '',
-                duration: data.duration || null,
+                duration: typeof data.duration === 'number' ? data.duration : null,
+                width: data.width || null,
+                height: data.height || null,
             });
         });
-        writer.on('error', reject);
+        writer.on('error', err => {
+            try { if (fs.existsSync(destinationPath)) fs.unlinkSync(destinationPath); } catch (e) {}
+            reject(err);
+        });
     });
 }, {
     connection,
     concurrency: 2,
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 10000 },
+    // NOTE: `attempts` and `backoff` are JOB options, not Worker options.
+    // They are set when the job is added (see media-queue.js), not here.
 });
 
 worker.on('failed', (job, err) => {
