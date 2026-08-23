@@ -15,6 +15,10 @@ const os = require('os');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { query, brandsForUser, assertBrandAllowed } = require('./db');
+// Gemini model. Google retires these on their own schedule — 2.5-flash was
+// pulled for new users — so it is an env var, changeable without a deploy.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+
 
 module.exports = function mountRoutes(app, deps = {}) {
   const { ai, youtubedl } = deps;
@@ -252,7 +256,7 @@ Always return all four segments. If the video is too short to divide, describe t
 Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
 
       const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: [
           { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
           { text: prompt }
@@ -457,7 +461,7 @@ Return ONLY a JSON object with these keys, no markdown, no extra text:
 }`;
 
         const result = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: GEMINI_MODEL,
           contents: [{ role: 'user', parts: [
             { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
             { text: prompt }
