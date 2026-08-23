@@ -137,14 +137,49 @@ app.get('/api/brands', async (req, res) => {
     }
     if (!campaign) return res.status(400).json({ error: 'Campaign is required.' });
 
-    // The creative_id is typed by hand into ad names after the pipe, so
-    // it has to be short. Brand + type + a 6-char base36 stamp.
+    // The creative_id is typed by hand into ad names after the pipe, so it has
+    // to be short. Brand + type + a 6-char base36 stamp.
     const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
     const stamp = Date.now().toString(36).slice(-6).toUpperCase();
     const creativeId = `${brand.toUpperCase()}_${typeCode}_${stamp}`;
 
-    let videoPath = null, geminiFile = null;
+    const videoLink = ig || tt || fb;
+    const queue = app.get('mediaQueue');
 
+    // Nothing is written until the analysis succeeds. The row is created by
+    // the worker, so a failed job leaves no half-populated creative behind.
+    // The id is returned now regardless, because it goes into the ad name.
+    if (videoLink && queue) {
+      try {
+        const job = await queue.add(
+          'process-creative',
+          {
+            creativeId, brand, campaign, type, date: date || null,
+            repurposed: repurposed === 'Yes', originalId: originalId || null,
+            ig: ig || null, fb: fb || null, tt: tt || null,
+            mediaUrl: videoLink,
+            platform: videoLink.includes('instagram.com') ? 'instagram'
+                    : videoLink.includes('tiktok.com') ? 'tiktok' : 'facebook',
+            addedBy: (req.session && req.session.user && req.session.user.username) || null,
+          },
+          { attempts: 3, backoff: { type: 'exponential', delay: 15000 },
+            removeOnComplete: 100, removeOnFail: 500 }
+        );
+        // The id is deliberately not returned here. It only becomes real when
+        // the row is written, so it is delivered by email after the analysis
+        // succeeds — no id floating around for a creative that may never exist.
+        return res.status(202).json({
+          success: true, queued: true, jobId: job.id,
+          message: 'Queued for analysis. The creative ID will be emailed once processing finishes.'
+        });
+      } catch (err) {
+        console.error('[add-creative] enqueue failed:', err.message);
+        return res.status(500).json({ error: 'Could not queue the creative. Try again.' });
+      }
+    }
+
+    // No link, or no queue configured: write the row directly. There is no
+    // analysis to wait for in the first case, and no worker in the second.
     try {
       await query(
         `insert into creatives
@@ -154,88 +189,16 @@ app.get('/api/brands', async (req, res) => {
         [creativeId, brand, date || null, campaign, type, repurposed === 'Yes',
          originalId || null, ig || null, fb || null, tt || null]
       );
-
-      const videoLink = ig || tt || fb;
-      if (!videoLink) return res.json({ success: true, creativeId, aiPending: false });
-      if (!ai || !youtubedl) return res.json({ success: true, creativeId, aiPending: false });
-
-      videoPath = path.join(os.tmpdir(), `temp_video_${Date.now()}.mp4`);
-      await youtubedl(videoLink, {
-        output: videoPath,
-        format: 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b',
-        mergeOutputFormat: 'mp4',
-        noWarnings: true,
-        noCheckCertificates: true,
-        addHeader: [
-          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-          'accept-language:en-US,en;q=0.9'
-        ]
-      });
-
-      geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
-      let state = await ai.files.get({ name: geminiFile.name });
-      while (state.state === 'PROCESSING') {
-        await new Promise(r => setTimeout(r, 3000));
-        state = await ai.files.get({ name: geminiFile.name });
-      }
-      if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
-
-      const prompt = `Watch this video carefully. Extract the following:
-1. "hook": A 1-2 sentence description of the opening hook.
-2. "seg1": (0-25%) Describe the setting, who appears, what action or message is shown.
-3. "seg2": (25-50%) Describe how the narrative develops.
-4. "seg3": (50-75%) Describe the core message or product moment.
-5. "seg4": (75-100%) Describe the closing and call to action.
-6. "duration": The exact length of the video in seconds (number).
-Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys — the dashboard labels segments by position, so a missing key mislabels the rest.
-Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
-
-      const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [
-          { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
-          { text: prompt }
-        ]}],
-        config: { responseMimeType: 'application/json', maxOutputTokens: 2000 }
-      });
-
-      const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
-      const dur = parseFloat(a.duration);
-      // Gemini estimates duration by watching, which drives the retention
-      // denominator. Anything outside 1-600s is a bad read, not a long video.
-      const safeDur = Number.isFinite(dur) && dur >= 1 && dur <= 600 ? dur : null;
-
-      await query(
-        `update creatives
-            set content_hook = $2, seg1 = $3, seg2 = $4, seg3 = $5, seg4 = $6,
-                duration_s = $7
-          where creative_id = $1`,
-        [creativeId, a.hook || null, a.seg1 || null, a.seg2 || null,
-         a.seg3 || null, a.seg4 || null, safeDur]
-      );
-
-      res.json({
-        success: true, creativeId, aiPending: true,
-        analysis: {
-          hook: a.hook || null,
-          segments: [a.seg1, a.seg2, a.seg3, a.seg4],
-          duration: safeDur
-        }
+      return res.json({
+        success: true, creativeId, queued: false,
+        message: videoLink ? 'Added without analysis (no worker configured).' : 'Added.'
       });
     } catch (err) {
       console.error('[add-creative]', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ error: err.message, creativeId, aiPending: false });
-      }
-    } finally {
-      if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-      if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {} }
+      return res.status(500).json({ error: err.message });
     }
   });
 
-  // Re-run the analysis on a creative that already exists. Used when the
-  // first attempt failed — the row is already saved, only the
-  // descriptions are missing.
   app.post('/api/regenerate-description', async (req, res) => {
     let brand;
     try { brand = resolveBrand(req); }
