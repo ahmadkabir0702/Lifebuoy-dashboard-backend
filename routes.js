@@ -245,15 +245,10 @@ app.get('/api/brands', async (req, res) => {
       }
       if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
 
-      const prompt = `Watch this video carefully. Extract the following:
-1. "hook": A 1-2 sentence description of the opening hook.
-2. "seg1": (0-25%) Describe the setting, who appears, what action or message is shown.
-3. "seg2": (25-50%) Describe how the narrative develops.
-4. "seg3": (50-75%) Describe the core message or product moment.
-5. "seg4": (75-100%) Describe the closing and call to action.
-6. "duration": The exact length of the video in seconds (number).
-Always return all four segments. If the video is too short to divide, describe the same footage from four angles rather than omitting keys.
-Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1", "seg2", "seg3", "seg4", "duration". No markdown, no extra text.`;
+      // Same shape as the worker so a regenerate cannot leave a creative with
+      // quartile segments but no timeline.
+      const { buildPrompt, normaliseTimeline } = require('./worker');
+      const prompt = buildPrompt(rows[0].duration_s || null);
 
       const result = await ai.models.generateContent({
         model: GEMINI_MODEL,
@@ -271,10 +266,13 @@ Keep each to 2-3 sentences. Return only a JSON object with keys: "hook", "seg1",
       await query(
         `update creatives
             set content_hook = $2, seg1 = $3, seg2 = $4, seg3 = $5, seg4 = $6,
-                duration_s = coalesce($7, duration_s)
+                duration_s = coalesce($7, duration_s),
+                segments = coalesce($8::jsonb, segments)
           where creative_id = $1`,
         [creative_id, a.hook || null, a.seg1 || null, a.seg2 || null,
-         a.seg3 || null, a.seg4 || null, safeDur]
+         a.seg3 || null, a.seg4 || null, safeDur,
+         // coalesce: never wipe an existing timeline if this run returned none.
+         (() => { const t = normaliseTimeline(a.timeline); return t.length ? JSON.stringify(t) : null; })()]
       );
 
       res.json({
