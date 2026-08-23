@@ -97,7 +97,7 @@ app.post('/api/test-gemini', async (req, res) => {
 
 Make your descriptions vivid and specific (mention colors, emotions, or exact text if relevant). Return ONLY a valid JSON object with exactly these keys: "hook", "seg1", "seg2", "seg3", "seg4". Do not use markdown formatting or include any extra text outside the JSON.`;
     const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
       contents: [{ role: 'user', parts: [
         { inlineData: { mimeType: 'video/mp4', data: videoBase64 } },
         { text: prompt }
