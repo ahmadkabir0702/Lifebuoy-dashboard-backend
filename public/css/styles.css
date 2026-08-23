@@ -764,3 +764,16 @@ select:focus,.search-input:focus,.modal-input:focus{outline:none;border-color:va
   font:400 12px/16px var(--font-ui); color:var(--ink-500);
   margin:-8px 0 12px;
 }
+
+/* ---------- Add-creative queued confirmation ----------------------- */
+.ac-queued{text-align:left}
+.ac-queued-title{font:500 16px/22px var(--font);color:var(--ink-900);margin-bottom:10px}
+.ac-queued-id{
+  display:inline-block;padding:7px 11px;margin-bottom:12px;
+  background:var(--white);border:1px solid var(--line);border-radius:var(--r-btn);
+  font:500 15px/1 var(--font);color:var(--ink-900);letter-spacing:.01em;
+  font-variant-numeric:tabular-nums;user-select:all;
+}
+.ac-queued-body{font:400 14px/21px var(--font);color:var(--ink-600);margin-bottom:10px}
+.ac-queued-note{font:400 13px/19px var(--font);color:var(--ink-400);margin-bottom:16px}
+.ac-queued-actions{display:flex;gap:8px;justify-content:flex-end}
