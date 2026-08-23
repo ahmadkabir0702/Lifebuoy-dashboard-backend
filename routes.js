@@ -1,255 +1,491 @@
 // =====================================================================
-//  creatives.js — builds the dashboard payload straight from Postgres
+//  routes.js — Postgres-backed API for Campaign Lens
 //
-//  Replaces sheetsCompat.js. The database does the aggregation and the
-//  scoring; this file only shapes the result and adds the few things
-//  that are genuinely presentation concerns (display labels, string
-//  parsing, "is it stale right now").
+//  Replaces the Google Sheets endpoints in server.js. Mount with:
+//      require('./routes')(app, { ai, youtubedl });
 //
-//  Response:
-//    { brand: {id, name}, creatives: [...], account: [...], campaigns: [...] }
+//  BRAND SCOPING: Express connects with a role that bypasses RLS, so
+//  every data query is scoped in code. Each handler resolves the brand
+//  through assertBrandAllowed() before touching data. Adding a new
+//  endpoint without that call leaks another client's data.
 // =====================================================================
-const { query } = require('./db');
+const express = require('express');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const bcrypt = require('bcryptjs');
+const { query, brandsForUser, assertBrandAllowed } = require('./db');
+// Gemini model. Google retires these on their own schedule — 2.5-flash was
+// pulled for new users — so it is an env var, changeable without a deploy.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
-const num = v => (v === null || v === undefined ? 0 : Number(v));
-const r1  = v => Math.round(num(v) * 10) / 10;
 
-// ---------------------------------------------------------------------
-//  Display label. Presentation, so it stays in JS.
-// ---------------------------------------------------------------------
-function shortName(id) {
-  const m = String(id).match(/Video(\d+)_(BrandSay|OthersSay)/);
-  if (m) return `Video${m[1]} ${m[2] === 'BrandSay' ? 'Brand Say' : 'Others Say'}`;
-  const parts = String(id).split('_');
-  return parts.length >= 4 ? `${parts[1]} · ${parts[2]} · ${parts[3]}` : id;
-}
+module.exports = function mountRoutes(app, deps = {}) {
+  const { ai, youtubedl } = deps;
 
-// The "original creative" field holds a free-text name with an optional
-// URL glued on. Parsing that is a display concern, not data.
-function parseOriginal(raw) {
-  const out = { originalName: raw || '', originalUrl: '', extractedOrigId: null };
-  if (!raw) return out;
-  const m = raw.match(/(https?:\/\/[^\s_]+)/);
-  if (m) out.originalUrl = m[1];
-  if (raw.includes('http')) out.originalName = raw.split('_http')[0].replace(/_/g, ' ');
-  out.extractedOrigId = raw.split('_http')[0] || null;
-  return out;
-}
+  // Resolve which brand this request is for: explicit ?brand=, else the
+  // session's active brand, else their first allowed brand.
+  function resolveBrand(req) {
+    const requested = req.query.brand || req.body?.brand_id || req.session.activeBrand;
+    const brand = requested || (req.session.brands || [])[0];
+    return assertBrandAllowed(req.session, brand);
+  }
 
-function monthLabel(d) {
-  if (!d) return '';
-  const dt = new Date(d);
-  return `${dt.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })} ${dt.getUTCFullYear()}`;
-}
+  // -------------------------------------------------------------------
+  //  LOGIN — reads app_users instead of USER_* environment variables
+  // -------------------------------------------------------------------
+  app.post('/login', async (req, res) => {
+    const username = (req.body.username || '').trim();
+    const password = (req.body.password || '').trim();
 
-// One platform's metrics, in the shape the render layer expects for
-// _meta / _tt. Returns null when the creative never ran on it.
-function paidBlock(row, platform) {
-  if (!row) return null;
-  const hook = r1(row.hook_rate);
-  return {
-    id: row.creative_id,
-    platform,
-    spend: Math.round(num(row.spend)),
-    reach: num(row.reach),
-    impressions: num(row.impressions),
-    hookRate: hook,
-    holdRate: r1(row.hold_rate),
-    hookQual: row.hook_q || '',
-    holdQual: row.hold_q || '',
-    vtr: r1(row.vtr),
-    watchTime: r1(row.avg_watch_time),
-    cqr: row.cqr || '',
-    adStatus: row.is_active ? 'ACTIVE' : 'STOPPED',
-    duration: row.duration_s === null ? null : Number(row.duration_s),
-    // w25..w100 are already percentages, averaged in SQL. No divisor,
-    // no reconstruction — this is what killed the Video Plays hack.
-    ret: [100, hook, r1(row.w25), r1(row.w50), r1(row.w75), r1(row.w100)],
-    recommendation: row.recommendation || '',
-    actionStatus: row.action_status || '',
-    actionBy: row.actioned_by || '',
-    actionDate: row.action_date ? new Date(row.action_date).toISOString().slice(0, 10) : '',
-    agency: row.agency || ''
-  };
-}
+    try {
+      const { rows } = await query(
+        `select password_hash from app_users
+          where username = $1 and is_active = true`,
+        [username]
+      );
 
-async function buildPayload(brandId) {
-  const [brandR, contentR, metaR, ttR, organicR, bestR, boostR, accountR, campR] =
-    await Promise.all([
-      query(`select brand_id, name from brands where brand_id = $1`, [brandId]),
+      // Compare even when the user is missing, so a wrong username and a
+      // wrong password take the same time and cannot be told apart.
+      const hash = rows.length ? rows[0].password_hash
+                               : '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidiu';
+      const ok = await bcrypt.compare(password, hash);
+      if (!rows.length || !ok) return res.redirect('/login?error=1');
 
-      query(`select creative_id, date, campaign, type, is_repurposed,
-                    original_creative_id, content_hook, seg1, seg2, seg3, seg4, segments,
-                    content_type, duration_s, creator_profile,
-                    ig_link, fb_link, tt_link
-               from creatives where brand_id = $1
-              order by date desc nulls last, created_at desc`, [brandId]),
+      const access = await brandsForUser(username);
+      if (!access || !access.brands.length) {
+        console.warn(`[login] ${username} authenticated but has no brands assigned`);
+        return res.redirect('/login?error=2');
+      }
 
-      query(`select * from v_paid_meta_creative where brand_id = $1
-              and creative_id is not null`, [brandId]),
-
-      query(`select * from v_paid_tiktok_creative where brand_id = $1
-              and creative_id is not null`, [brandId]),
-
-      query(`select o.creative_id, o.platform, o.views, o.reach, o.likes,
-                    o.comments, o.shares, o.saves, o.total_interactions,
-                    o.avg_watch_time, o.time_posted, s.cqr,
-                    s.engagement_rate, s.retention_rate
-               from organic_perf o
-               join creatives c on c.creative_id = o.creative_id
-               left join v_organic_scored s
-                 on s.creative_id = o.creative_id and s.platform = o.platform
-              where c.brand_id = $1`, [brandId]),
-
-      query(`select creative_id, best_cqr, is_validated
-               from v_creative_organic_best where brand_id = $1`, [brandId]),
-
-      query(`select creative_id, is_boosted from v_boost_status
-              where brand_id = $1`, [brandId]),
-
-      query(`select month, act_spend, act_reach, act_impressions,
-                    act_frequency, act_engagement_rate, act_cpm,
-                    kpi_spend, kpi_reach, kpi_impressions, kpi_frequency
-               from account_monthly where brand_id = $1 order by month`, [brandId]),
-
-      query(`select distinct campaign from creatives
-              where brand_id = $1 and campaign is not null and campaign <> ''
-              order by campaign`, [brandId])
-    ]);
-
-  const metaBy  = Object.fromEntries(metaR.rows.map(r => [r.creative_id, r]));
-  const ttBy    = Object.fromEntries(ttR.rows.map(r => [r.creative_id, r]));
-  const bestBy  = Object.fromEntries(bestR.rows.map(r => [r.creative_id, r]));
-  const boostBy = Object.fromEntries(boostR.rows.map(r => [r.creative_id, r.is_boosted]));
-
-  const organicBy = {};
-  organicR.rows.forEach(o => {
-    (organicBy[o.creative_id] ||= {})[o.platform] = {
-      views: num(o.views), reach: num(o.reach), likes: num(o.likes),
-      // buildOrganicHTML() renders the Facebook box with videoViews /
-      // reactions. Same numbers, FB's own naming — aliased here so the
-      // render layer needs no edit.
-      videoViews: num(o.views), reactions: num(o.likes),
-      comments: num(o.comments), shares: num(o.shares), saves: num(o.saves),
-      totalInteractions: num(o.total_interactions),
-      avgWatchTime: num(o.avg_watch_time),
-      engagementRate: o.engagement_rate === null ? null : Number(o.engagement_rate),
-      retentionRate: o.retention_rate === null ? null : Number(o.retention_rate),
-      cqr: o.cqr || '',
-      timePosted: o.time_posted
-    };
+      req.session.user = username;
+      req.session.brands = access.brands;
+      req.session.isInternal = access.isInternal;
+      req.session.activeBrand = access.brands[0];
+      req.session.save(err => {
+        if (err) { console.error('[login] session save:', err); return res.redirect('/login?error=1'); }
+        res.redirect('/');
+      });
+    } catch (err) {
+      console.error('[login] failed:', err.message);
+      res.redirect('/login?error=1');
+    }
   });
 
-  const now = Date.now();
+  // -------------------------------------------------------------------
+  //  Which brands can this user see, and which is active
+  // -------------------------------------------------------------------
+app.get('/api/brands', async (req, res) => {
+    try {
+      const [b, a] = await Promise.all([
+        query(`select brand_id, name from brands
+                where brand_id = any($1) and is_active = true order by name`,
+              [req.session.brands || []]),
+        query(`select agency_id, name from agencies
+                where is_active = true order by name`)
+      ]);
+      const u = await query(
+        `select display_name from app_users where username = $1`,
+        [req.session.user]
+      );
+      res.json({
+        brands: b.rows,
+        active: req.session.activeBrand,
+        isInternal: !!req.session.isInternal,
+        agencies: a.rows,
+        user: { username: req.session.user,
+                displayName: u.rows[0]?.display_name || req.session.user }
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
-  const creatives = contentR.rows.map(c => {
-    const id = c.creative_id;
-    const m  = paidBlock(metaBy[id], 'meta');
-    const t  = paidBlock(ttBy[id], 'tiktok');
-    const org = organicBy[id] || {};
-    const best = bestBy[id] || {};
+  app.post('/api/switch-brand', (req, res) => {
+    try {
+      const brand = assertBrandAllowed(req.session, req.body.brand_id);
+      req.session.activeBrand = brand;
+      req.session.save(() => res.json({ success: true, active: brand }));
+    } catch (err) {
+      res.status(403).json({ error: err.message });
+    }
+  });
 
-    // Combined view across platforms, mirroring the old addPaid() rollup
-    const both = [m, t].filter(Boolean);
-    const platform = both.length > 1 ? 'both' : (both[0] ? both[0].platform : 'both');
-    const avg = f => both.length ? both.reduce((s, x) => s + x[f], 0) / both.length : 0;
-    const cqrRank = { Good: 0, Average: 1, Poor: 2 };
-    const bestPaidCqr = both
-      .map(x => x.cqr)
-      .sort((a, b) => (cqrRank[a] ?? 9) - (cqrRank[b] ?? 9))[0] || 'Invalid';
+  // -------------------------------------------------------------------
+  //  DASHBOARD DATA — same 11-array shape the frontend already parses
+  // -------------------------------------------------------------------
+  const { buildPayload } = require('./creatives');
 
-    const isBoosted = !!boostBy[id];
+  app.get('/api/dashboard-data', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      res.json(await buildPayload(brand));
+    } catch (err) {
+      console.error('[dashboard-data]', err.message);
+      res.status(err.message.startsWith('Access denied') ? 403 : 500)
+         .json({ error: err.message });
+    }
+  });
 
-    // Needs "now", so it is computed per request rather than in SQL.
-    let needsBoostWarning = false;
-    if (best.is_validated && !isBoosted && c.date) {
-      needsBoostWarning = (now - new Date(c.date).getTime()) / 3600000 > 48;
+  // -------------------------------------------------------------------
+  //  ADD CREATIVE — writes to `creatives`, then Gemini fills the rest
+  // -------------------------------------------------------------------
+ app.post('/api/add-creative', async (req, res) => {
+    const { campaign, type, date, ig, fb, tt, repurposed, originalId } = req.body;
+    let brand;
+    try { brand = resolveBrand(req); }
+    catch (err) { return res.status(403).json({ error: err.message }); }
+
+    if (!['Brand Say', 'Others Say'].includes(type)) {
+      return res.status(400).json({ error: 'Invalid Type selected.' });
+    }
+    if (!campaign) return res.status(400).json({ error: 'Campaign is required.' });
+
+    // The creative_id is typed by hand into ad names after the pipe, so it has
+    // to be short. Brand + type + a 6-char base36 stamp.
+    const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
+    const stamp = Date.now().toString(36).slice(-6).toUpperCase();
+    const creativeId = `${brand.toUpperCase()}_${typeCode}_${stamp}`;
+
+    const videoLink = ig || tt || fb;
+    const queue = app.get('mediaQueue');
+
+    // Nothing is written until the analysis succeeds. The row is created by
+    // the worker, so a failed job leaves no half-populated creative behind.
+    // The id is returned now regardless, because it goes into the ad name.
+    if (videoLink && queue) {
+      try {
+        const job = await queue.add(
+          'process-creative',
+          {
+            creativeId, brand, campaign, type, date: date || null,
+            repurposed: repurposed === 'Yes', originalId: originalId || null,
+            ig: ig || null, fb: fb || null, tt: tt || null,
+            mediaUrl: videoLink,
+            platform: videoLink.includes('instagram.com') ? 'instagram'
+                    : videoLink.includes('tiktok.com') ? 'tiktok' : 'facebook',
+            addedBy: (req.session && req.session.user && req.session.user.username) || null,
+          },
+          { attempts: 3, backoff: { type: 'exponential', delay: 15000 },
+            removeOnComplete: 100, removeOnFail: 500 }
+        );
+        // The id is deliberately not returned here. It only becomes real when
+        // the row is written, so it is delivered by email after the analysis
+        // succeeds — no id floating around for a creative that may never exist.
+        return res.status(202).json({
+          success: true, queued: true, jobId: job.id,
+          message: 'Queued for analysis. The creative ID will be emailed once processing finishes.'
+        });
+      } catch (err) {
+        console.error('[add-creative] enqueue failed:', err.message);
+        return res.status(500).json({ error: 'Could not queue the creative. Try again.' });
+      }
     }
 
-    return {
-      id,
-      short: shortName(id),
-      type: c.type,
-      campaign: c.campaign || '',
-      month: monthLabel(c.date),
-      date: c.date ? new Date(c.date).toISOString().slice(0, 10) : '',
-      platform,
-
-      // combined paid metrics
-      spend: both.reduce((s, x) => s + x.spend, 0),
-      reach: both.reduce((s, x) => Math.max(s, x.reach), 0),
-      impressions: both.reduce((s, x) => s + x.impressions, 0),
-      hookRate: r1(avg('hookRate')),
-      holdRate: both.length ? Math.max(...both.map(x => x.holdRate)) : 0,
-      hookQual: (m || t || {}).hookQual || '',
-      holdQual: (m || t || {}).holdQual || '',
-      vtr: r1(avg('vtr')),
-      watchTime: r1(avg('watchTime')),
-      cqr: bestPaidCqr,
-      adStatus: both.some(x => x.adStatus === 'ACTIVE') ? 'ACTIVE'
-              : (both.length ? 'STOPPED' : 'NOT_BOOSTED'),
-      duration: c.duration_s === null ? (m || t || {}).duration ?? null : Number(c.duration_s),
-      ret: (m || t || {}).ret || [100, 0, 0, 0, 0, 0],
-
-      _meta: m,
-      _tt: t,
-
-      // content
-      contentHook: c.content_hook || '',
-      // Older creatives still carry quartile text; new ones do not. Kept so
-      // existing rows keep rendering rather than losing their brief.
-      segments: [c.seg1, c.seg2, c.seg3, c.seg4].filter(Boolean),
-      // Fixed-interval descriptions: [{ t: seconds, d: text }]. Time-indexed so
-      // it can be read against the retention curve.
-      timeline: Array.isArray(c.segments) ? c.segments : [],
-      contentType: c.content_type || '',
-      creativeLink: c.ig_link || c.tt_link || c.fb_link || '',
-      igLink: c.ig_link || '', fbLink: c.fb_link || '', ttLink: c.tt_link || '',
-      creatorProfile: c.creator_profile || null,
-      isRepurposed: !!c.is_repurposed,
-      ...parseOriginal(c.original_creative_id),
-
-      // organic
-      igOrganic: org.ig || null,
-      fbOrganic: org.fb || null,
-      ttOrganic: org.tt || null,
-
-      // derived — from the database, not guessed in JS
-      isValidated: !!best.is_validated,
-      bestOrgCqr: best.best_cqr || null,
-      isBoosted,
-      needsBoostWarning,
-
-      // actions (combined view takes meta first, then tiktok)
-      recommendation: (m || t || {}).recommendation || '',
-      actionStatus:   (m || t || {}).actionStatus || '',
-      actionBy:       (m || t || {}).actionBy || '',
-      actionDate:     (m || t || {}).actionDate || '',
-      agency:         (m || t || {}).agency || ''
-    };
+    // No link, or no queue configured: write the row directly. There is no
+    // analysis to wait for in the first case, and no worker in the second.
+    try {
+      await query(
+        `insert into creatives
+           (creative_id, brand_id, date, campaign, type, is_repurposed,
+            original_creative_id, content_type, ig_link, fb_link, tt_link)
+         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',$8,$9,$10)`,
+        [creativeId, brand, date || null, campaign, type, repurposed === 'Yes',
+         originalId || null, ig || null, fb || null, tt || null]
+      );
+      return res.json({
+        success: true, creativeId, queued: false,
+        message: videoLink ? 'Added without analysis (no worker configured).' : 'Added.'
+      });
+    } catch (err) {
+      console.error('[add-creative]', err.message);
+      return res.status(500).json({ error: err.message });
+    }
   });
 
-  const MONTHS = ['January','February','March','April','May','June',
-                  'July','August','September','October','November','December'];
+  app.post('/api/regenerate-description', async (req, res) => {
+    let brand;
+    try { brand = resolveBrand(req); }
+    catch (err) { return res.status(403).json({ error: err.message }); }
 
-  return {
-    brand: brandR.rows.length
-      ? { id: brandR.rows[0].brand_id, name: brandR.rows[0].name }
-      : { id: brandId, name: brandId },
-    creatives,
-    account: accountR.rows.map(a => {
-      const d = new Date(a.month);
-      return {
-        month: `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`,
-        actSpend: num(a.act_spend), actReach: num(a.act_reach),
-        actImpressions: num(a.act_impressions), actFrequency: num(a.act_frequency),
-        actEngagement: num(a.act_engagement_rate), actCpm: num(a.act_cpm),
-        kpiSpend: num(a.kpi_spend), kpiReach: num(a.kpi_reach),
-        kpiImpressions: num(a.kpi_impressions), kpiFrequency: num(a.kpi_frequency)
-      };
-    }),
-    campaigns: campR.rows.map(r => r.campaign)
-  };
-}
+    const { creative_id } = req.body;
+    if (!creative_id) return res.status(400).json({ error: 'creative_id is required' });
+    if (!ai || !youtubedl) return res.status(503).json({ error: 'Video analysis is not configured on this server.' });
 
-module.exports = { buildPayload };
+    let videoPath = null, geminiFile = null;
+    try {
+      const { rows } = await query(
+        `select ig_link, fb_link, tt_link from creatives
+          where creative_id = $1 and brand_id = $2`,
+        [creative_id, brand]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Creative not found for this brand' });
+
+      const videoLink = rows[0].ig_link || rows[0].tt_link || rows[0].fb_link;
+      if (!videoLink) return res.status(400).json({ error: 'This creative has no video link to analyse.' });
+
+      videoPath = path.join(os.tmpdir(), `regen_${Date.now()}.mp4`);
+        await youtubedl(videoLink, {
+        output: videoPath,
+        format: 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/b',
+        mergeOutputFormat: 'mp4',
+        noWarnings: true,
+        noCheckCertificates: true,
+        addHeader: [
+          'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+          'accept-language:en-US,en;q=0.9'
+        ]
+      });
+
+      geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+      let state = await ai.files.get({ name: geminiFile.name });
+      while (state.state === 'PROCESSING') {
+        await new Promise(r => setTimeout(r, 3000));
+        state = await ai.files.get({ name: geminiFile.name });
+      }
+      if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
+
+      // Same shape as the worker so a regenerate cannot leave a creative with
+      // quartile segments but no timeline.
+      const { buildPrompt, normaliseTimeline } = require('./worker');
+      const prompt = buildPrompt(rows[0].duration_s || null);
+
+      const result = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [
+          { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+          { text: prompt }
+        ]}],
+        config: { responseMimeType: 'application/json', maxOutputTokens: 2000 }
+      });
+
+      const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+      const dur = parseFloat(a.duration);
+      const safeDur = Number.isFinite(dur) && dur >= 1 && dur <= 600 ? dur : null;
+
+      await query(
+        `update creatives
+            set content_hook = $2,
+                duration_s = coalesce($3, duration_s),
+                segments = coalesce($4::jsonb, segments)
+          where creative_id = $1`,
+        [creative_id, a.hook || null, safeDur,
+         // coalesce: never wipe an existing timeline if this run returned none.
+         (() => { const t = normaliseTimeline(a.timeline); return t.length ? JSON.stringify(t) : null; })()]
+      );
+
+      res.json({
+        success: true, creativeId: creative_id,
+        analysis: { hook: a.hook || null,
+                    segments: [a.seg1, a.seg2, a.seg3, a.seg4],
+                    duration: safeDur }
+      });
+    } catch (err) {
+      console.error('[regenerate-description]', err.message);
+      res.status(500).json({ error: err.message });
+    } finally {
+      if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+      if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {} }
+    }
+  });
+
+  // -------------------------------------------------------------------
+  //  UPDATE ACTION — writes to `recommendations`
+  //  The old endpoint took Sheets A1 ranges. This takes fields.
+  // -------------------------------------------------------------------
+  app.post('/api/update-action', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      const { creative_id, platform, action_status, actioned_by, action_date, agency } = req.body;
+
+      if (!creative_id) return res.status(400).json({ error: 'creative_id is required' });
+      if (!['meta', 'tiktok'].includes(platform)) {
+        return res.status(400).json({ error: "platform must be 'meta' or 'tiktok'" });
+      }
+
+      // Confirm the creative belongs to a brand this user may touch.
+      const { rows } = await query(
+        `select 1 from creatives where creative_id = $1 and brand_id = $2`,
+        [creative_id, brand]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Creative not found for this brand' });
+
+      await query(
+        `insert into recommendations
+           (creative_id, platform, action_status, actioned_by, action_date, agency, updated_at)
+         values ($1,$2,$3,$4,$5,$6, now())
+         on conflict (creative_id, platform) do update set
+           action_status = excluded.action_status,
+           actioned_by   = excluded.actioned_by,
+           action_date   = excluded.action_date,
+           agency        = excluded.agency,
+           updated_at    = now()`,
+        [creative_id, platform, action_status || null, actioned_by || null,
+         action_date || null, agency || null]
+      );
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[update-action]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------------
+  //  OTHERS SAY STATS — manual entry. No sheet to type into any more,
+  //  so this is the only way these numbers get in.
+  // -------------------------------------------------------------------
+  app.get('/api/others-say-pending', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      const { rows } = await query(
+        `select c.creative_id, c.campaign, c.creator_profile, c.duration_s,
+                c.ig_link, c.fb_link, c.tt_link,
+                coalesce(
+                  json_agg(json_build_object(
+                    'platform', o.platform, 'views', o.views, 'likes', o.likes,
+                    'comments', o.comments, 'shares', o.shares, 'saves', o.saves,
+                    'avg_watch_time', o.avg_watch_time
+                  ) order by o.platform) filter (where o.platform is not null),
+                  '[]'
+                ) as stats
+           from creatives c
+           left join organic_perf o on o.creative_id = c.creative_id
+          where c.brand_id = $1 and c.type = 'Others Say'
+          group by c.creative_id, c.campaign, c.creator_profile, c.duration_s,
+                   c.ig_link, c.fb_link, c.tt_link
+          order by c.date desc nulls last`,
+        [brand]
+      );
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/others-say-stats', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      const { creative_id, platform, views, likes, comments, shares, saves, avg_watch_time } = req.body;
+
+      if (!['ig', 'fb', 'tt'].includes(platform)) {
+        return res.status(400).json({ error: "platform must be 'ig', 'fb' or 'tt'" });
+      }
+
+      const { rows } = await query(
+        `select duration_s from creatives
+          where creative_id = $1 and brand_id = $2 and type = 'Others Say'`,
+        [creative_id, brand]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'Others Say creative not found for this brand' });
+
+      const num = v => (v === '' || v === null || v === undefined ? null : Number(v));
+      const watch = num(avg_watch_time);
+
+      // Guard the commonest hand-entry mistake: milliseconds pasted from
+      // an API export instead of seconds off Business Suite. The database
+      // CHECK also blocks it, but a clear message here beats a 500.
+      const dur = rows[0].duration_s;
+      if (watch !== null && dur && watch > dur * 5) {
+        return res.status(400).json({
+          error: `Average watch time of ${watch}s is implausible for a ${dur}s video. Enter SECONDS, not milliseconds.`
+        });
+      }
+
+      const l = num(likes) || 0, c = num(comments) || 0,
+            s = num(shares) || 0, sv = num(saves) || 0;
+
+      await query(
+        `insert into organic_perf
+           (creative_id, platform, views, likes, comments, shares, saves,
+            total_interactions, avg_watch_time)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         on conflict (creative_id, platform) do update set
+           views = excluded.views, likes = excluded.likes,
+           comments = excluded.comments, shares = excluded.shares,
+           saves = excluded.saves,
+           total_interactions = excluded.total_interactions,
+           avg_watch_time = excluded.avg_watch_time`,
+        [creative_id, platform, num(views), l, c, s, sv, l + c + s + sv, watch]
+      );
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[others-say-stats]', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------------
+  //  TEMPORARY manual-upload tool. Takes a raw MP4 body, runs it through
+  //  the same Gemini Files-API flow as add-creative, and returns the
+  //  descriptions without touching the database. Backs upload-test.html.
+  //  Session-protected via the global requireAuth (path is under /api/).
+  //  Safe to delete this route + the HTML page when no longer needed.
+  // -------------------------------------------------------------------
+  app.post('/api/describe-upload',
+    express.raw({ type: () => true, limit: '200mb' }),
+    async (req, res) => {
+      if (!ai) return res.status(500).json({ error: 'Gemini is not configured (GEMINI_API_KEY missing).' });
+      if (!req.body || !req.body.length) return res.status(400).json({ error: 'No file received.' });
+
+      let videoPath = null, geminiFile = null;
+      try {
+        videoPath = path.join(os.tmpdir(), `upload_${Date.now()}.mp4`);
+        fs.writeFileSync(videoPath, req.body);
+
+        geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+        let state = await ai.files.get({ name: geminiFile.name });
+        while (state.state === 'PROCESSING') {
+          await new Promise(r => setTimeout(r, 3000));
+          state = await ai.files.get({ name: geminiFile.name });
+        }
+        if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
+
+        const prompt = `Watch this video carefully and describe it in consecutive 2.5-second windows.
+
+Rules:
+- Start at 0s and step in exact 2.5-second windows (0–2.5, 2.5–5.0, 5.0–7.5, …) until the very end of the video. The final window may be shorter than 2.5s if the clip does not divide evenly — clamp its "end" to the true video length.
+- Cover the ENTIRE video. Do not skip time. Do not merge windows. A 60-second video must produce 24 windows.
+- For each window write 1-2 specific sentences: what is on screen (people, product, setting, colours), any on-screen text spoken word-for-word if legible, actions, and audio/tone.
+
+Return ONLY a JSON object with these keys, no markdown, no extra text:
+{
+  "duration": <total length in seconds, number>,
+  "segments": [
+    { "start": <number>, "end": <number>, "desc": "<string>" }
+  ]
+}`;
+
+        const result = await ai.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: [{ role: 'user', parts: [
+            { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
+            { text: prompt }
+          ]}],
+          config: { responseMimeType: 'application/json', maxOutputTokens: 8000 }
+        });
+
+        const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+        res.json({ success: true, analysis: a });
+      } catch (err) {
+        console.error('[describe-upload]', err.message);
+        if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+      } finally {
+        if (videoPath && fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
+        if (geminiFile) { try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {} }
+      }
+    });
+
+  // -------------------------------------------------------------------
+  //  Health check. Doubles as the free-tier keep-alive target.
+  // -------------------------------------------------------------------
+  app.get('/api/health', async (req, res) => {
+    try {
+      await query('select 1');
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(503).json({ ok: false, error: err.message });
+    }
+  });
+};
