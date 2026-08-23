@@ -79,7 +79,7 @@ async function buildPayload(brandId) {
       query(`select brand_id, name from brands where brand_id = $1`, [brandId]),
 
       query(`select creative_id, date, campaign, type, is_repurposed,
-                    original_creative_id, content_hook, seg1, seg2, seg3, seg4,
+                    original_creative_id, content_hook, seg1, seg2, seg3, seg4, segments,
                     content_type, duration_s, creator_profile,
                     ig_link, fb_link, tt_link
                from creatives where brand_id = $1
@@ -197,6 +197,9 @@ async function buildPayload(brandId) {
       // content
       contentHook: c.content_hook || '',
       segments: [c.seg1, c.seg2, c.seg3, c.seg4].filter(Boolean),
+      // Fixed-interval descriptions: [{ t: seconds, d: text }]. Time-indexed so
+      // it can be read against the retention curve.
+      timeline: Array.isArray(c.segments) ? c.segments : [],
       contentType: c.content_type || '',
       creativeLink: c.ig_link || c.tt_link || c.fb_link || '',
       igLink: c.ig_link || '', fbLink: c.fb_link || '', ttLink: c.tt_link || '',
