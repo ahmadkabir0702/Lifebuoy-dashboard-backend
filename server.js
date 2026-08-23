@@ -93,8 +93,19 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 
 
-// Background download queue — only mounts when REDIS_URL is set
+
+
+// Background download queue — routes only mount when REDIS_URL is set
 require('./media-queue').mountMediaQueue(app);
+
+// Run the queue worker inside this process. At current volume a dedicated
+// Render Background Worker costs $7/month and buys nothing; the downloads are
+// I/O bound and never block the event loop. To split it out later, set
+// RUN_WORKER_IN_PROCESS=false here and deploy a worker service with the start
+// command `node worker.js` — same file, no code change.
+if (String(process.env.RUN_WORKER_IN_PROCESS || 'true') !== 'false') {
+  require('./worker').startWorker(ai);
+}
 
 // All Postgres-backed API routes live in routes.js
 require('./routes')(app, { ai, youtubedl });
