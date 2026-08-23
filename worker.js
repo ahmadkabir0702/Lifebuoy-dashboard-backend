@@ -1,62 +1,78 @@
 const { Worker } = require('bullmq');
 const IORedis = require('ioredis');
-const { ApifyClient } = require('apify-client');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
-const apifyClient = new ApifyClient({ token: process.env.APIFY_API_TOKEN });
+const connection = new IORedis(process.env.REDIS_URL, {
+    maxRetriesPerRequest: null,
+});
 
-console.log('Creative background worker active and listening for jobs...');
+console.log('Creative worker active and listening for background download tasks...');
 
-const worker = new Worker('creative-downloads', async job => {
-    const { mediaUrl, outputFileName } = job.data;
-    console.log(`Processing download for: ${mediaUrl}`);
+const worker = new Worker('creative-downloads', async (job) => {
+    const { mediaUrl, outputFileName, platform } = job.data;
+    console.log(`[Job ${job.id}] Processing ${platform} download for: ${mediaUrl}`);
 
-    let rawVideoUrl = null;
+    // 1. Fetch raw CDN URL from RapidAPI (works for both Instagram & TikTok)
+    const options = {
+        method: 'GET',
+        url: 'https://instagram-tiktok-youtube-downloader.p.rapidapi.com/fetch',
+        params: { url: mediaUrl },
+        headers: {
+            'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+            'X-RapidAPI-Host': 'instagram-tiktok-youtube-downloader.p.rapidapi.com',
+        },
+    };
 
-    if (mediaUrl.includes('instagram.com')) {
-        const run = await apifyClient.actor('apify/instagram-scraper').call({
-            directUrls: [mediaUrl],
-            resultsType: 'details',
-            searchType: 'hashtag',
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        if (items.length > 0 && items[0].videoUrl) rawVideoUrl = items[0].videoUrl;
-        
-    } else if (mediaUrl.includes('tiktok.com')) {
-        const run = await apifyClient.actor('scrape-creators/best-tiktok-scraper').call({
-            'video URLs': [mediaUrl],
-            resultsPerPage: 1,
-        });
-        const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems();
-        if (items.length > 0) rawVideoUrl = items[0].videoUrl;
+    const apiResponse = await axios.request(options);
+    const data = apiResponse.data;
+
+    if (!data || !data.download_url) {
+        throw new Error(`RapidAPI failed to return a download_url for ${mediaUrl}`);
     }
 
-    if (!rawVideoUrl) throw new Error('Could not resolve raw CDN video link from Apify.');
+    const rawVideoUrl = data.download_url;
 
-    const destinationPath = path.join(__dirname, 'public', outputFileName);
+    // 2. Ensure public/uploads directory exists
+    const uploadsDir = path.join(__dirname, 'public', 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    // 3. Stream .mp4 file to disk
+    const destinationPath = path.join(uploadsDir, outputFileName);
     const writer = fs.createWriteStream(destinationPath);
 
-    const response = await axios({
+    const videoStream = await axios({
         url: rawVideoUrl,
         method: 'GET',
         responseType: 'stream',
     });
 
-    response.data.pipe(writer);
+    videoStream.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
-        writer.on('finish', () => resolve({ status: 'completed', file: outputFileName }));
+        writer.on('finish', () => {
+            console.log(`[Job ${job.id}] Successfully saved: ${outputFileName}`);
+            resolve({
+                status: 'completed',
+                fileName: outputFileName,
+                platform: platform,
+                caption: data.caption || '',
+                thumbnail: data.thumbnail_url || '',
+                duration: data.duration || null,
+            });
+        });
         writer.on('error', reject);
     });
 }, {
     connection,
+    concurrency: 2,
     attempts: 3,
-    backoff: { type: 'exponential', delay: 30000 },
+    backoff: { type: 'exponential', delay: 10000 },
 });
 
 worker.on('failed', (job, err) => {
-    console.error(`Job ${job.id} failed with error: ${err.message}`);
+    console.error(`[Job ${job?.id}] Failed: ${err.message}`);
 });
