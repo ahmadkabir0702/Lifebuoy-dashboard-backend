@@ -349,8 +349,10 @@ function renderSection1(accOverview, allData, allContent) {
 // ── Section 2 ─────────────────────────────────────────────────────────────────
 function renderSection2(allData, allContent) {
   const co = kpi.colors();
-  const bsCount  = allContent.filter(d=>d.type==='Brand Say').length;
-  const osCount  = allContent.filter(d=>d.type==='Others Say').length;
+  const bsData = allContent.filter(d=>d.type==='Brand Say');
+  const osData = allContent.filter(d=>d.type==='Others Say');
+  const bsCount  = bsData.length;
+  const osCount  = osData.length;
   const origAssets = allContent.filter(d=>!d.isRepurposed).length;
   const repAssets  = allContent.filter(d=>d.isRepurposed).length;
 
