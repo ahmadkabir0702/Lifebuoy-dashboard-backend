@@ -50,6 +50,20 @@ const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST
 const SEG_SECONDS = Number(process.env.SEGMENT_SECONDS || 2);
 const MAX_SEGMENTS = Number(process.env.MAX_SEGMENTS || 60);
 
+/**
+ * Widen the interval rather than truncating long videos. A 149s video at 2s
+ * needs 75 windows; capping at 60 described only the first 120s and left the
+ * last 29 unanalysed. Stepping to 3s covers the whole thing in 50 windows,
+ * which also keeps output tokens — and the model's tendency to give up on
+ * long lists — under control.
+ */
+function stepFor(duration) {
+  if (!duration || duration <= 0) return SEG_SECONDS;
+  let step = SEG_SECONDS;
+  while (Math.ceil(duration / step) > MAX_SEGMENTS) step += 1;
+  return step;
+}
+
 // Structured output. responseMimeType alone asks for JSON without saying what
 // shape; a schema constrains it, which is what stops the model returning an
 // object where an array is expected or renaming keys.
@@ -76,7 +90,8 @@ const RESPONSE_SCHEMA = {
 
 function buildPrompt(hintDuration) {
   const dur = hintDuration && hintDuration > 0 ? hintDuration : null;
-  const n = dur ? Math.min(Math.ceil(dur / SEG_SECONDS), MAX_SEGMENTS) : null;
+  const step = stepFor(dur);
+  const n = dur ? Math.ceil(dur / step) : null;
 
   return `Watch this video carefully and describe it on a fixed time grid.
 
@@ -86,10 +101,10 @@ Return ONE JSON object with these keys:
 
 "hook": 1-2 sentences describing the opening hook — what grabs attention in the first two seconds.
 
-"timeline": an array of ${n ? `exactly ${n}` : ''} objects, one per ${SEG_SECONDS}-second window, covering the whole video from 0 to the end with no gaps. Each object:
-  { "t": <window start in seconds, a multiple of ${SEG_SECONDS}>,
+"timeline": an array of ${n ? `exactly ${n}` : ''} objects, one per ${step}-second window, covering the whole video from 0 to the end with no gaps. Each object:
+  { "t": <window start in seconds, a multiple of ${step}>,
     "d": "<one sentence, present tense, describing what is on screen and what is said or heard in that window>" }
-Cover EVERY window in order. Do NOT merge, skip or group windows — a window where little happens still gets its own entry saying so. ${n ? `The array must contain ${n} entries: t = 0, ${SEG_SECONDS}, ${SEG_SECONDS * 2}, and so on up to ${(n - 1) * SEG_SECONDS}.` : ''} If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover.
+Cover EVERY window in order. Do NOT merge, skip or group windows — a window where little happens still gets its own entry saying so. ${n ? `The array must contain ${n} entries: t = 0, ${step}, ${step * 2}, and so on up to ${(n - 1) * step}.` : ''} If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover.
 
 Return only the JSON object. No markdown, no commentary.`;
 }
@@ -231,7 +246,9 @@ function normaliseTimeline(raw) {
   }
 
   out.sort((x, y) => x.t - y.t);
-  return out.slice(0, MAX_SEGMENTS);
+  // No hard slice: stepFor already bounds the count, and truncating here
+  // would silently drop the end of a video the model described correctly.
+  return out;
 }
 
 // ── The job ───────────────────────────────────────────────────────────────────
@@ -272,16 +289,17 @@ function makeProcessor(ai) {
         : (Number.isFinite(parseFloat(a.duration)) ? parseFloat(a.duration) : null);
 
       if (durForCheck) {
-        const expected = Math.min(Math.ceil(durForCheck / SEG_SECONDS), MAX_SEGMENTS);
+        const step = stepFor(durForCheck);
+        const expected = Math.ceil(durForCheck / step);
         // 70%: allows a window or two of slack at the tail without accepting
         // a timeline that has clearly been collapsed.
         if (timeline.length < Math.floor(expected * 0.7)) {
           throw new Error(
             `Timeline too sparse — got ${timeline.length} windows for ${durForCheck.toFixed(0)}s, ` +
-            `expected about ${expected}. The model grouped intervals.`
+            `expected about ${expected} at ${step}s. The model grouped intervals.`
           );
         }
-        const lastCovered = timeline[timeline.length - 1].t + SEG_SECONDS;
+        const lastCovered = timeline[timeline.length - 1].t + step;
         if (lastCovered < durForCheck * 0.8) {
           throw new Error(
             `Timeline stops at ${lastCovered.toFixed(0)}s of ${durForCheck.toFixed(0)}s — incomplete coverage.`
