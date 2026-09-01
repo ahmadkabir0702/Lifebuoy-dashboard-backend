@@ -278,6 +278,7 @@
       <div class="nav-item active" onclick="setNav('creatives',this)">Creative Hub</div>
       <div class="nav-item" onclick="setNav('kpi',this)">Campaign KPIs</div>
       <div class="nav-item" onclick="setNav('creators',this)">Creators</div>
+      <div class="nav-item" onclick="setNav('signoff',this)">Campaign Sign-Off</div>
     </div>
 
     <div class="topbar-right">
@@ -402,6 +403,7 @@
         </div>
 
 <div id="page-kpi" class="hidden"></div>
+<div id="page-signoff" class="hidden"></div>
 <div id="page-creators" class="hidden"></div>
         
         </div>
@@ -532,6 +534,7 @@ window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
   <script src="/js/dashboard.js"></script>
   <script src="/js/creators.js"></script>
   <script src="/js/kpi-dashboard.js"></script>
+  <script src="/js/signoff.js"></script>
   <script src="/js/dropdowns.js"></script>
   <script src="/js/pretest.js"></script>
   <script>
@@ -544,10 +547,12 @@ window.addEventListener('load', () => setTimeout(syncFilterPills, 400));
       if (typeof orig === 'function') orig(page, el);
       const kpi = page === 'kpi';
       const creatives = page === 'creatives';
+      const signoff = page === 'signoff';
       document.getElementById('creative-filters')?.classList.toggle('hidden', !creatives);
       document.getElementById('kpi-filters-bar')?.classList.toggle('hidden', !kpi);
       document.getElementById('filter-pills')?.classList.toggle('hidden', !creatives);
       if (kpi && typeof renderKPIFilters === 'function') renderKPIFilters();
+      if (signoff && typeof Signoff !== 'undefined') Signoff.render();
     };
   })();
   </script>
