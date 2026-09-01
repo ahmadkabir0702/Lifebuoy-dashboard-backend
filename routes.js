@@ -40,7 +40,7 @@ module.exports = function mountRoutes(app, deps = {}) {
 
     try {
       const { rows } = await query(
-        `select password_hash from app_users
+        `select password_hash, role from app_users
           where username = $1 and is_active = true`,
         [username]
       );
@@ -61,6 +61,7 @@ module.exports = function mountRoutes(app, deps = {}) {
       req.session.user = username;
       req.session.brands = access.brands;
       req.session.isInternal = access.isInternal;
+      req.session.role = rows[0].role || null;
       req.session.activeBrand = access.brands[0];
       req.session.save(err => {
         if (err) { console.error('[login] session save:', err); return res.redirect('/login?error=1'); }
@@ -94,7 +95,8 @@ app.get('/api/brands', async (req, res) => {
         isInternal: !!req.session.isInternal,
         agencies: a.rows,
         user: { username: req.session.user,
-                displayName: u.rows[0]?.display_name || req.session.user }
+                displayName: u.rows[0]?.display_name || req.session.user,
+                role: req.session.role || null }
       });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -108,6 +110,93 @@ app.get('/api/brands', async (req, res) => {
       req.session.save(() => res.json({ success: true, active: brand }));
     } catch (err) {
       res.status(403).json({ error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------------
+  //  CAMPAIGN SIGN-OFF — create (client lead only), list (own brands),
+  //  approve (media head only). Role lives on app_users.role, set on
+  //  the session at login; nothing here trusts anything the client
+  //  claims about itself.
+  // -------------------------------------------------------------------
+  app.post('/api/signoffs', async (req, res) => {
+    try {
+      // TEMPORARY: open to everyone while roles are still being assigned.
+      // Restore this check once real usernames are set via
+      // `update app_users set role = 'client_lead' where username = ...`
+      // if (req.session.role !== 'client_lead') {
+      //   return res.status(403).json({ error: 'Only client leads can create a sign-off.' });
+      // }
+      const brand = assertBrandAllowed(req.session, req.body.brand_id);
+      const m = req.body.meta || {};
+      if (!m.campaignName || !String(m.campaignName).trim()) {
+        return res.status(400).json({ error: 'Campaign name is required.' });
+      }
+
+      const { rows } = await query(
+        `insert into sign_offs
+           (brand_id, status, campaign_name, market, go_live_date,
+            client_lead_name, variant, format, date_prepared, fields, created_by)
+         values ($1, 'pending', $2, $3, nullif($4,'')::date, $5, $6, $7,
+                 nullif($8,'')::date, $9, $10)
+         returning id, status, created_at`,
+        [brand, m.campaignName, m.market || null, m.goLive || '',
+         m.clientLead || null, m.variant || null, m.format || null,
+         m.datePrepared || '', JSON.stringify(req.body.fields || {}), req.session.user]
+      );
+      res.status(201).json({ success: true, signoff: rows[0] });
+    } catch (err) {
+      console.error('[signoffs] create failed:', err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/signoffs', async (req, res) => {
+    try {
+      const { rows } = await query(
+        `select id, brand_id, status, campaign_name, market, go_live_date,
+                client_lead_name, variant, format, date_prepared,
+                created_by, created_at, approved_by, approved_at
+           from sign_offs
+          where brand_id = any($1)
+          order by created_at desc`,
+        [req.session.brands || []]
+      );
+      res.json({ signoffs: rows });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/signoffs/:id/approve', async (req, res) => {
+    try {
+      // TEMPORARY: open to everyone while roles are still being assigned.
+      // Restore this check once real usernames are set via
+      // `update app_users set role = 'media_head' where username = ...`
+      // if (req.session.role !== 'media_head') {
+      //   return res.status(403).json({ error: 'Only the media head can approve a sign-off.' });
+      // }
+      const { rows: existing } = await query(
+        `select brand_id, status from sign_offs where id = $1`, [req.params.id]
+      );
+      if (!existing.length) return res.status(404).json({ error: 'Sign-off not found.' });
+      assertBrandAllowed(req.session, existing[0].brand_id);
+      if (existing[0].status === 'approved') {
+        return res.status(409).json({ error: 'Already approved.' });
+      }
+
+      const { rows } = await query(
+        `update sign_offs
+            set status = 'approved', approved_by = $2, approved_at = now()
+          where id = $1
+          returning id, status, approved_by, approved_at`,
+        [req.params.id, req.session.user]
+      );
+      res.json({ success: true, signoff: rows[0] });
+    } catch (err) {
+      console.error('[signoffs] approve failed:', err.message);
+      res.status(err.message.startsWith('Access denied') ? 403 : 500)
+         .json({ error: err.message });
     }
   });
 
