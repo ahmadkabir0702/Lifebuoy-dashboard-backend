@@ -536,7 +536,7 @@ app.get('/api/brands', async (req, res) => {
 Rules:
 - Start at 0s and step in exact 2.5-second windows (0–2.5, 2.5–5.0, 5.0–7.5, …) until the very end of the video. The final window may be shorter than 2.5s if the clip does not divide evenly — clamp its "end" to the true video length.
 - Cover the ENTIRE video. Do not skip time. Do not merge windows. A 60-second video must produce 24 windows.
-- For each window write 1-2 specific sentences: what is on screen (people, product, setting, colours), any on-screen text spoken word-for-word if legible, actions, and audio/tone.
+- For each window write 1-2 specific sentences: what is on screen (people, product, setting, colours), on-screen text word-for-word if legible, and actions. If anyone speaks or sings, write the actual words as close to verbatim as you can make out, not just that speech is happening. If a word is genuinely unclear, give your best guess followed by a question mark rather than skip it.
 
 Return ONLY a JSON object with these keys, no markdown, no extra text:
 {
