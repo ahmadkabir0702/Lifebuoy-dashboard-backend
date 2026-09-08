@@ -12,15 +12,17 @@ let currentPlatform = 'both', currentSort = 'hook', sortAscending = false, selec
 let currentPage = 'creatives';
 let chartsInit = {};
 
-let AGENCIES = [], CURRENT_USER = '';
+let AGENCIES = [], CURRENT_USER = '', CURRENT_ROLE = '', CURRENT_IS_INTERNAL = false;
 
 async function loadBrands() {
   try {
     const res = await fetch('/api/brands');
     if (!res.ok) return;
-    const { brands, active, agencies, user } = await res.json();
+    const { brands, active, agencies, user, isInternal } = await res.json();
     AGENCIES = agencies || [];
     CURRENT_USER = (user && user.displayName) || '';
+    CURRENT_ROLE = (user && user.role) || '';
+    CURRENT_IS_INTERNAL = !!isInternal;
     const sel = document.getElementById('brand-switcher');
     if (!sel) return;
     sel.innerHTML = brands
@@ -449,9 +451,13 @@ function getRecHTML(item, titleLabel) {
   if (!item) return '';
   if (item.recommendation) {
     const isActioned = item.actionStatus && item.actionStatus.toLowerCase() === 'actioned';
+    // Only the admin (role='admin') or a client user (not internal WPP/agency
+    // staff) may mark a recommendation actioned and assign it to an agency.
+    // Everyone else sees the same pending state with no way to act on it.
+    const canAssignAgency = CURRENT_ROLE === 'admin' || !CURRENT_IS_INTERNAL;
     const actionBadge = isActioned
       ? `<div class="sheet-rec-action">Actioned by ${item.actionBy||'Unknown'} on ${item.actionDate||'Date unknown'} (${item.agency||'Agency unassigned'})</div>`
-      : `<div class="sheet-rec-action" style="color:#8A5A12">Pending action (${item.agency||'Agency unassigned'}) <button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button></div>`;
+      : `<div class="sheet-rec-action" style="color:#8A5A12">Pending action (${item.agency||'Agency unassigned'}) ${canAssignAgency ? `<button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button>` : ''}</div>`;
     return `<div class="sheet-rec"><div class="sheet-rec-content"><div class="sheet-rec-label">${titleLabel} Live Recommendation</div><div class="sheet-rec-text">${item.recommendation}</div>${actionBadge}</div></div>`;
   } else {
     return `<div class="sheet-rec" style="opacity:0.6;border-color:var(--c-border);background:var(--c-surface);"><div class="sheet-rec-content"><div class="sheet-rec-label" style="color:var(--c-muted);">${titleLabel} Live Recommendation</div><div class="sheet-rec-text" style="color:var(--c-muted);">No recommendation provided.</div></div></div>`;
