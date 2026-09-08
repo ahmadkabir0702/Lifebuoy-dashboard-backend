@@ -43,7 +43,7 @@ const kpi = {
     const vals = arr.map(d => this.safeNum(d[key])).filter(n => n > 0);
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
   },
-  fmtMoney(n) { if (!n) return '$0'; if (n>=1e6) return 'Rs'+(n/1e6).toFixed(2)+'M'; if (n>=1e3) return 'Rs'+(n/1e3).toFixed(1)+'K'; return 'Rs'+n.toFixed(2); },
+  fmtMoney(n) { if (!n) return 'Rs. 0'; if (n>=1e6) return 'Rs. '+(n/1e6).toFixed(2)+'M'; if (n>=1e3) return 'Rs. '+(n/1e3).toFixed(1)+'K'; return 'Rs. '+n.toFixed(2); },
   fmtNum(n)   { if (!n) return '0'; if (n>=1e6) return (n/1e6).toFixed(1)+'M'; if (n>=1e3) return (n/1e3).toFixed(0)+'K'; return String(Math.round(n)); },
   pct(v)      { return (v||0).toFixed(1)+'%'; },
 };
@@ -565,7 +565,7 @@ function renderSection4(allData) {
   const mHold=kpi.avg(meta.filter(d=>d.holdRate>0),'holdRate'),     tHold=kpi.avg(tt.filter(d=>d.holdRate>0),'holdRate');
 
   kpi.make('chart-cost-eff','bar',{
-    labels:['CPM by Reach ($)','CPM by Impressions ($)'],
+    labels:['CPM by Reach (Rs.)','CPM by Impressions (Rs.)'],
     datasets:[
       {label:'Meta',  data:[parseFloat(mCPR.toFixed(2)),parseFloat(mCPI.toFixed(2))],backgroundColor:'#1877f2',borderRadius:0},
       {label:'TikTok',data:[parseFloat(tCPR.toFixed(2)),parseFloat(tCPI.toFixed(2))],backgroundColor:'#ff0050',borderRadius:0},
@@ -590,8 +590,8 @@ function renderSection4(allData) {
     ['Total Spend',     kpi.fmtMoney(mSpend),kpi.fmtMoney(tSpend),false,false],
     ['Total Reach',     kpi.fmtNum(mReach),  kpi.fmtNum(tReach),  false,false],
     ['Total Impressions',kpi.fmtNum(mImpr),  kpi.fmtNum(tImpr),   false,false],
-    ['CPM by Reach ($)', mCPR, tCPR, true, true],
-    ['CPM by Impr. ($)', mCPI, tCPI, true, true],
+    ['CPM by Reach (Rs.)', mCPR, tCPR, true, true],
+    ['CPM by Impr. (Rs.)', mCPI, tCPI, true, true],
     ['Avg Watch Time (s)',mWatch,tWatch,false,true],
     ['Avg VTR %',        mVtr,  tVtr,  false,true],
     ['Avg Hook Rate %',  mHook, tHook, false,true],
