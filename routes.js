@@ -387,6 +387,14 @@ app.get('/api/brands', async (req, res) => {
       const brand = resolveBrand(req);
       const { creative_id, platform, action_status, actioned_by, action_date, agency } = req.body;
 
+      // Only the admin or a client user (not internal WPP/agency staff) may
+      // mark a recommendation actioned and assign it to an agency.
+      const isAdmin = req.session.role === 'admin';
+      const isClient = !req.session.isInternal;
+      if (!isAdmin && !isClient) {
+        return res.status(403).json({ error: 'Only the admin or a client user can assign this to an agency.' });
+      }
+
       if (!creative_id) return res.status(400).json({ error: 'creative_id is required' });
       if (!['meta', 'tiktok'].includes(platform)) {
         return res.status(400).json({ error: "platform must be 'meta' or 'tiktok'" });
