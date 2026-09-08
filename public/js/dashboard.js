@@ -429,7 +429,7 @@ function closeCreativeModal(e) {
 }
 
 function getMetricsHTML(item, titleLabel) {
-  if (!item || !item.spend) return '';
+  if (!item) return '';
   const cqrColorClass = item.cqr === 'Good' ? 'cqr-good' : (item.cqr === 'Average' ? 'cqr-avg' : 'cqr-poor');
   const hlValFormatted = item.holdRate >= 1000 ? (item.holdRate/1000).toFixed(1)+'K' : (item.holdRate||0).toFixed(1);
   const durLabel = item.duration ? `<div style="font-size:10px;color:var(--c-muted);margin-top:3px;">Duration: ${item.duration}s</div>` : '';
