@@ -258,11 +258,21 @@ async function load() {
 const PLATS = [ {k:'ig',label:'Instagram'}, {k:'fb',label:'Facebook'}, {k:'tt',label:'TikTok'} ];
 let REVIEWED = false;
 
+// The checkbox is the single source of truth for whether a link field is
+// editable, so no reset path can leave a toggle on with its box disabled.
+function syncPlatFields() {
+  PLATS.forEach(p => {
+    const box = $('f_' + p.k + '_on'), inp = $('f_' + p.k);
+    if (!box || !inp) return;
+    inp.disabled = !box.checked;
+    if (!box.checked) inp.value = '';
+  });
+}
+
 function platToggle(k) {
-  const on = $('f_' + k + '_on').checked;
-  const inp = $('f_' + k);
-  inp.disabled = !on;
-  if (!on) inp.value = ''; else inp.focus();
+  syncPlatFields();
+  const box = $('f_' + k + '_on'), inp = $('f_' + k);
+  if (box && box.checked && inp) inp.focus();
 }
 
 function readForm() {
@@ -351,7 +361,8 @@ $('addBtn').onclick = async () => {
       : 'Added. Stats are due within 48 hours of now.';
     ['f_creator', 'f_date', 'f_ig', 'f_fb', 'f_tt'].forEach(id => $(id).value = '');
     $('f_campaign').selectedIndex = 0;
-    PLATS.forEach(p => { $('f_' + p.k + '_on').checked = false; $('f_' + p.k).disabled = true; });
+    PLATS.forEach(p => { $('f_' + p.k + '_on').checked = false; });
+    syncPlatFields();
     setEditMode();
     setTimeout(load, 4000);
   } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
