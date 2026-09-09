@@ -80,7 +80,7 @@ async function buildPayload(brandId) {
 
       query(`select creative_id, date, campaign, type, is_repurposed,
                     original_creative_id, content_hook, seg1, seg2, seg3, seg4, segments,
-                    content_type, duration_s, creator_profile,
+                    content_type, duration_s, creator_profile, created_at,
                     ig_link, fb_link, tt_link
                from creatives where brand_id = $1
               order by date desc nulls last, created_at desc`, [brandId]),
@@ -179,6 +179,9 @@ async function buildPayload(brandId) {
       campaign: c.campaign || '',
       month: monthLabel(c.date),
       date: c.date ? new Date(c.date).toISOString().slice(0, 10) : '',
+      // When the creative was added to the system, as opposed to when the
+      // post went live. Drives the "recently added" sort.
+      addedAt: c.created_at ? new Date(c.created_at).toISOString() : '',
       platform,
 
       // combined paid metrics
