@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Influencer Stats · Campaign Lens</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink-900: #1A1A4F; --ink-700: #3B3B6B; --ink-500: #6B6B8A; --ink-300: #A8A8BE;
+    --line: #E1E0EB; --bg: #F5F5F9; --card: #FFFFFF;
+    --good: #1E8A4C; --good-bg: #E8F5EE; --warn: #B7791F; --warn-bg: #FCF3E3;
+    --bad: #B3261E; --bad-bg: #FCEBEA; --info: #1877F2; --info-bg: #E8F0FE;
+    --font: 'Rubik', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 400 14px/1.5 var(--font); color: var(--ink-900); background: var(--bg); }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 14px 24px;
+           display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  header h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  header .who { color: var(--ink-500); font-size: 13px; }
+  header select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  header a { color: var(--ink-500); font-size: 13px; text-decoration: none; }
+  header a:hover { color: var(--ink-900); }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 14px; }
+  .banner { border-radius: 10px; padding: 14px 18px; font-weight: 500; display: none; }
+  .banner.show { display: block; }
+  .banner.bad { background: var(--bad-bg); color: var(--bad); border: 1px solid #F0C4C1; }
+  .banner.warn { background: var(--warn-bg); color: var(--warn); border: 1px solid #F0DDB5; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  label { display: block; font-size: 12px; color: var(--ink-500); margin-bottom: 4px; }
+  input, select { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  input:focus, select:focus { outline: 2px solid var(--info-bg); border-color: var(--info); }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+  button { font: inherit; font-weight: 500; padding: 9px 16px; border-radius: 6px; border: 1px solid var(--line); background: #fff; cursor: pointer; color: var(--ink-900); }
+  button.primary { background: var(--ink-900); color: #fff; border-color: var(--ink-900); }
+  button:disabled { opacity: .5; cursor: default; }
+  .msg { font-size: 13px; color: var(--ink-500); }
+  .msg.ok { color: var(--good); } .msg.err { color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; color: var(--ink-500); padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .id { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .sub { color: var(--ink-500); font-size: 12px; }
+  .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .badge.done { background: var(--good-bg); color: var(--good); }
+  .badge.pending { background: var(--info-bg); color: var(--info); }
+  .badge.soon { background: var(--warn-bg); color: var(--warn); }
+  .badge.overdue { background: var(--bad-bg); color: var(--bad); }
+  .plats { display: flex; gap: 6px; flex-wrap: wrap; }
+  .plat { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: var(--bg); color: var(--ink-700); border: 1px solid var(--line); }
+  .plat.has { background: var(--good-bg); color: var(--good); border-color: #C8E6D3; }
+  .empty { color: var(--ink-500); padding: 24px; text-align: center; }
+  /* stats modal */
+  .overlay { position: fixed; inset: 0; background: rgba(26,26,79,.45); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
+  .overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 12px; width: min(860px, 100%); max-height: 92vh; overflow: auto; padding: 22px; }
+  .modal h3 { margin: 0 0 4px; font-size: 16px; }
+  .tabs { display: flex; gap: 6px; margin: 14px 0; }
+  .tab { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; font-weight: 500; }
+  .tab.on { background: var(--ink-900); color: #fff; border-color: var(--ink-900); }
+  .tab.off { opacity: .45; }
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 640px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Influencer Stats</h1>
+    <div class="who" id="who"></div>
+  </div>
+  <div style="display:flex;gap:12px;align-items:center">
+    <select id="brandSel" title="Brand"></select>
+    <a href="/logout">Sign out</a>
+  </div>
+</header>
+
+<main>
+  <div class="banner bad" id="overdueBanner"></div>
+  <div class="banner warn" id="soonBanner"></div>
+
+  <section class="card">
+    <h2>Add influencer content</h2>
+    <div class="grid">
+      <div><label>Creator name</label><input id="f_creator" placeholder="e.g. Shanudrie"></div>
+      <div><label>Campaign</label><select id="f_campaign"><option value="" disabled selected>Select campaign</option></select></div>
+      <div><label>Date posted</label><input id="f_date" type="date"></div>
+      <div><label>Instagram link</label><input id="f_ig" placeholder="https://www.instagram.com/reel/…"></div>
+      <div><label>Facebook link</label><input id="f_fb" placeholder="https://www.facebook.com/…"></div>
+      <div><label>TikTok link</label><input id="f_tt" placeholder="https://www.tiktok.com/@…/video/…"></div>
+    </div>
+    <div class="row">
+      <button class="primary" id="addBtn">Add content</button>
+      <span class="msg" id="addMsg">At least one link is required. The video is analysed automatically; it appears in the list below in a few minutes.</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Your content <span class="sub" id="countSub"></span></h2>
+    <div id="list"></div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h3 id="mTitle"></h3>
+    <div class="sub" id="mSub"></div>
+    <div class="tabs" id="tabs"></div>
+    <div class="stats-grid">
+      <div><label>Views</label><input id="s_views" type="number" min="0" inputmode="numeric"></div>
+      <div><label>Likes</label><input id="s_likes" type="number" min="0" inputmode="numeric"></div>
+      <div><label>Comments</label><input id="s_comments" type="number" min="0" inputmode="numeric"></div>
+      <div><label>Shares</label><input id="s_shares" type="number" min="0" inputmode="numeric"></div>
+      <div><label>Saves</label><input id="s_saves" type="number" min="0" inputmode="numeric"></div>
+      <div><label>Avg watch time (seconds)</label><input id="s_watch" type="number" min="0" step="0.1" inputmode="decimal"></div>
+    </div>
+    <div class="row">
+      <button class="primary" id="saveBtn">Save</button>
+      <button id="closeBtn">Close</button>
+      <span class="msg" id="saveMsg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PLAT = { ig: 'Instagram', fb: 'Facebook', tt: 'TikTok' };
+const SOON_AT = 36, DUE_AT = 48;
+let CREATIVES = [], CURRENT = null, CUR_PLAT = 'ig', BRAND = null;
+
+// ── boot ──────────────────────────────────────────────────────────────────
+(async function boot() {
+  const b = await fetch('/api/brands').then(r => r.json());
+  $('who').textContent = b.user.displayName;
+  b.brands.forEach(x => {
+    const o = document.createElement('option'); o.value = x.brand_id; o.textContent = x.name;
+    if (x.brand_id === b.active) o.selected = true;
+    $('brandSel').appendChild(o);
+  });
+  BRAND = b.active || (b.brands[0] && b.brands[0].brand_id);
+  await loadCampaigns();
+  $('brandSel').style.display = b.brands.length > 1 ? '' : 'none';
+  $('brandSel').onchange = async e => {
+    BRAND = e.target.value;
+    await fetch('/api/switch-brand', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brand: BRAND }) });
+    await loadCampaigns();
+    load();
+  };
+  load();
+  setInterval(load, 60000); // countdown stays honest without a refresh
+})();
+
+// ── campaigns ─────────────────────────────────────────────────────────────
+async function loadCampaigns() {
+  const sel = $('f_campaign');
+  sel.innerHTML = '<option value="" disabled selected>Select campaign</option>';
+  try {
+    const list = await fetch('/api/campaigns?brand=' + encodeURIComponent(BRAND)).then(r => r.json());
+    (Array.isArray(list) ? list : []).forEach(n => {
+      const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+    });
+    if (!list.length) sel.innerHTML = '<option value="" disabled selected>No campaigns set up for this brand</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="" disabled selected>Could not load campaigns</option>';
+  }
+}
+
+// ── list ──────────────────────────────────────────────────────────────────
+function status(c) {
+  const has = (c.stats || []).length > 0;
+  const h = Number(c.hours_since_upload) || 0;
+  if (has) return { k: 'done', label: 'Done' };
+  if (h >= DUE_AT) return { k: 'overdue', label: `Overdue by ${fmtH(h - DUE_AT)}` };
+  if (h >= SOON_AT) return { k: 'soon', label: `Due in ${fmtH(DUE_AT - h)}` };
+  return { k: 'pending', label: `Due in ${fmtH(DUE_AT - h)}` };
+}
+function fmtH(h) { return h < 1 ? `${Math.round(h * 60)}m` : `${Math.round(h)}h`; }
+const ORDER = { overdue: 0, soon: 1, pending: 2, done: 3 };
+
+async function load() {
+  const r = await fetch('/api/others-say-pending?brand=' + encodeURIComponent(BRAND));
+  if (!r.ok) { $('list').innerHTML = `<div class="empty">Could not load (${r.status}).</div>`; return; }
+  CREATIVES = await r.json();
+  CREATIVES.forEach(c => c._s = status(c));
+  CREATIVES.sort((a, b) => ORDER[a._s.k] - ORDER[b._s.k] || new Date(b.created_at) - new Date(a.created_at));
+
+  const overdue = CREATIVES.filter(c => c._s.k === 'overdue').length;
+  const soon = CREATIVES.filter(c => c._s.k === 'soon').length;
+  $('overdueBanner').className = 'banner bad' + (overdue ? ' show' : '');
+  $('overdueBanner').textContent = overdue ? `${overdue} piece${overdue > 1 ? 's' : ''} of content past the 48-hour deadline with no stats entered. These are at the top of the list.` : '';
+  $('soonBanner').className = 'banner warn' + (soon && !overdue ? ' show' : '');
+  $('soonBanner').textContent = soon ? `${soon} piece${soon > 1 ? 's' : ''} due within the next ${DUE_AT - SOON_AT} hours.` : '';
+  $('countSub').textContent = CREATIVES.length ? `· ${CREATIVES.length} total, ${CREATIVES.filter(c => c._s.k === 'done').length} done` : '';
+
+  if (!CREATIVES.length) { $('list').innerHTML = '<div class="empty">Nothing yet. Add content above.</div>'; return; }
+  $('list').innerHTML = `<table><thead><tr>
+      <th>Creative</th><th>Creator</th><th>Posted</th><th>Uploaded</th><th>Status</th><th>Stats</th><th></th>
+    </tr></thead><tbody>` + CREATIVES.map(c => {
+      const has = new Set((c.stats || []).map(s => s.platform));
+      const links = ['ig', 'fb', 'tt'].filter(p => c[p + '_link']);
+      return `<tr>
+        <td><div class="id">${esc(c.creative_id)}</div><div class="sub">${esc(c.campaign || '')}${c.format ? ' · ' + esc(c.format.replace('_', ' ')) : ''}</div></td>
+        <td>${esc(c.creator_profile || '—')}</td>
+        <td>${c.date ? fmtD(c.date) : '—'}</td>
+        <td>${fmtDT(c.created_at)}</td>
+        <td><span class="badge ${c._s.k}">${c._s.label}</span></td>
+        <td><div class="plats">${links.map(p => `<span class="plat ${has.has(p) ? 'has' : ''}">${PLAT[p]}${has.has(p) ? ' ✓' : ''}</span>`).join('') || '<span class="sub">no links</span>'}</div></td>
+        <td><button onclick="openStats('${esc(c.creative_id)}')">${has.size ? 'Edit stats' : 'Enter stats'}</button></td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
+}
+
+// ── add content ───────────────────────────────────────────────────────────
+$('addBtn').onclick = async () => {
+  const body = {
+    brand_id: BRAND, type: 'Others Say',
+    creator: $('f_creator').value.trim(),
+    campaign: $('f_campaign').value,
+    date: $('f_date').value || null,
+    ig: $('f_ig').value.trim() || null,
+    fb: $('f_fb').value.trim() || null,
+    tt: $('f_tt').value.trim() || null,
+  };
+  const m = $('addMsg'); m.className = 'msg';
+  if (!body.creator) { m.className = 'msg err'; m.textContent = 'Creator name is required.'; return; }
+  if (!body.campaign) { m.className = 'msg err'; m.textContent = 'Select a campaign.'; return; }
+  if (!body.ig && !body.fb && !body.tt) { m.className = 'msg err'; m.textContent = 'At least one post link is required.'; return; }
+  $('addBtn').disabled = true; m.textContent = 'Submitting…';
+  try {
+    const r = await fetch('/api/add-creative', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || 'HTTP ' + r.status);
+    m.className = 'msg ok';
+    m.textContent = j.queued
+      ? 'Queued. The video is being analysed; it will appear below in a few minutes. Stats are due within 48 hours of now.'
+      : 'Added. Stats are due within 48 hours of now.';
+    ['f_creator', 'f_date', 'f_ig', 'f_fb', 'f_tt'].forEach(id => $(id).value = '');
+    $('f_campaign').selectedIndex = 0;
+    setTimeout(load, 4000);
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+  finally { $('addBtn').disabled = false; }
+};
+
+// ── stats modal ───────────────────────────────────────────────────────────
+function openStats(id) {
+  CURRENT = CREATIVES.find(c => c.creative_id === id); if (!CURRENT) return;
+  $('mTitle').textContent = CURRENT.creative_id;
+  $('mSub').textContent = `${CURRENT.creator_profile || ''} · ${CURRENT.campaign || ''} · ${CURRENT._s.label}`;
+  const links = ['ig', 'fb', 'tt'].filter(p => CURRENT[p + '_link']);
+  CUR_PLAT = links[0] || 'ig';
+  $('tabs').innerHTML = ['ig', 'fb', 'tt'].map(p => {
+    const on = p === CUR_PLAT, off = !CURRENT[p + '_link'];
+    return `<div class="tab ${on ? 'on' : ''} ${off ? 'off' : ''}" title="${off ? 'No ' + PLAT[p] + ' link on this creative' : ''}" onclick="${off ? '' : `switchPlat('${p}')`}">${PLAT[p]}</div>`;
+  }).join('');
+  fillForm(); $('saveMsg').textContent = ''; $('overlay').classList.add('show');
+}
+function switchPlat(p) { CUR_PLAT = p; [...$('tabs').children].forEach(t => t.classList.toggle('on', t.textContent === PLAT[p])); fillForm(); $('saveMsg').textContent = ''; }
+function fillForm() {
+  const s = (CURRENT.stats || []).find(x => x.platform === CUR_PLAT) || {};
+  $('s_views').value = s.views ?? ''; $('s_likes').value = s.likes ?? ''; $('s_comments').value = s.comments ?? '';
+  $('s_shares').value = s.shares ?? ''; $('s_saves').value = s.saves ?? ''; $('s_watch').value = s.avg_watch_time ?? '';
+}
+$('closeBtn').onclick = () => $('overlay').classList.remove('show');
+$('overlay').onclick = e => { if (e.target === $('overlay')) $('overlay').classList.remove('show'); };
+
+$('saveBtn').onclick = async () => {
+  const body = {
+    brand_id: BRAND, creative_id: CURRENT.creative_id, platform: CUR_PLAT,
+    views: $('s_views').value, likes: $('s_likes').value, comments: $('s_comments').value,
+    shares: $('s_shares').value, saves: $('s_saves').value, avg_watch_time: $('s_watch').value,
+  };
+  const m = $('saveMsg'); m.className = 'msg';
+  if (body.views === '') { m.className = 'msg err'; m.textContent = 'Views is required.'; return; }
+  $('saveBtn').disabled = true; m.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/others-say-stats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || 'HTTP ' + r.status);
+    m.className = 'msg ok'; m.textContent = `${PLAT[CUR_PLAT]} saved.`;
+    await load(); CURRENT = CREATIVES.find(c => c.creative_id === CURRENT.creative_id) || CURRENT;
+    $('mSub').textContent = `${CURRENT.creator_profile || ''} · ${CURRENT.campaign || ''} · ${CURRENT._s.label}`;
+  } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
+  finally { $('saveBtn').disabled = false; }
+};
+
+// ── utils ─────────────────────────────────────────────────────────────────
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+function fmtD(d) { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }); }
+function fmtDT(d) { return new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+</script>
+</body>
+</html>
