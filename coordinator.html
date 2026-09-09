@@ -63,6 +63,25 @@
   .tab { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; font-weight: 500; }
   .tab.on { background: var(--ink-900); color: #fff; border-color: var(--ink-900); }
   .tab.off { opacity: .45; }
+  .plats-form { margin-top: 14px; display: grid; gap: 10px; }
+  .plat-row { display: flex; align-items: center; gap: 12px; }
+  .plat-row .plat-name { width: 84px; flex: none; font-size: 13px; color: var(--ink-700); }
+  .plat-row input { flex: 1; }
+  .plat-row input:disabled { background: var(--bg); color: var(--ink-300); }
+  .tgl { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; cursor: pointer; }
+  .tgl input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .tgl-track { position: absolute; inset: 0; background: var(--line); border-radius: 999px; transition: background .15s; }
+  .tgl-track::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: transform .15s; }
+  .tgl input:checked + .tgl-track { background: var(--ink-900); }
+  .tgl input:checked + .tgl-track::before { transform: translateX(16px); }
+  .rv { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--bg); margin-top: 16px; }
+  .rv h4 { margin: 0 0 10px; font-size: 13px; }
+  .rv-line { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .rv-line:last-child { border-bottom: 0; }
+  .rv-k { color: var(--ink-500); }
+  .rv-v { text-align: right; word-break: break-all; max-width: 62%; }
+  .rv-off { color: var(--ink-300); }
+  .rv-warn { margin-top: 10px; font-size: 12px; color: var(--warn); }
   .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   @media (max-width: 640px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
 </style>
@@ -90,13 +109,30 @@
       <div><label>Creator name</label><input id="f_creator" placeholder="e.g. Shanudrie"></div>
       <div><label>Campaign</label><select id="f_campaign"><option value="" disabled selected>Select campaign</option></select></div>
       <div><label>Date posted</label><input id="f_date" type="date"></div>
-      <div><label>Instagram link</label><input id="f_ig" placeholder="https://www.instagram.com/reel/…"></div>
-      <div><label>Facebook link</label><input id="f_fb" placeholder="https://www.facebook.com/…"></div>
-      <div><label>TikTok link</label><input id="f_tt" placeholder="https://www.tiktok.com/@…/video/…"></div>
     </div>
+    <div class="plats-form">
+      <div class="plat-row">
+        <label class="tgl"><input type="checkbox" id="f_ig_on" onchange="platToggle('ig')"><span class="tgl-track"></span></label>
+        <div class="plat-name">Instagram</div>
+        <input id="f_ig" placeholder="https://www.instagram.com/reel/…" disabled>
+      </div>
+      <div class="plat-row">
+        <label class="tgl"><input type="checkbox" id="f_fb_on" onchange="platToggle('fb')"><span class="tgl-track"></span></label>
+        <div class="plat-name">Facebook</div>
+        <input id="f_fb" placeholder="https://www.facebook.com/…" disabled>
+      </div>
+      <div class="plat-row">
+        <label class="tgl"><input type="checkbox" id="f_tt_on" onchange="platToggle('tt')"><span class="tgl-track"></span></label>
+        <div class="plat-name">TikTok</div>
+        <input id="f_tt" placeholder="https://www.tiktok.com/@…/video/…" disabled>
+      </div>
+      <div class="sub">Turn on every platform this content went live on. A platform left off is recorded as not used.</div>
+    </div>
+    <div id="review" style="display:none"></div>
     <div class="row">
-      <button class="primary" id="addBtn">Add content</button>
-      <span class="msg" id="addMsg">At least one link is required. The video is analysed automatically; it appears in the list below in a few minutes.</span>
+      <button class="primary" id="addBtn">Review</button>
+      <button id="backBtn" style="display:none">Back</button>
+      <span class="msg" id="addMsg">Turn on each platform this went live on, then review before submitting.</span>
     </div>
   </section>
 
@@ -216,20 +252,94 @@ async function load() {
 }
 
 // ── add content ───────────────────────────────────────────────────────────
-$('addBtn').onclick = async () => {
-  const body = {
-    brand_id: BRAND, type: 'Others Say',
+// A link field is only editable when its toggle is on, and then it is
+// required. Turning a platform off is a deliberate "not used", which is
+// different from leaving a box blank by accident.
+const PLATS = [ {k:'ig',label:'Instagram'}, {k:'fb',label:'Facebook'}, {k:'tt',label:'TikTok'} ];
+let REVIEWED = false;
+
+function platToggle(k) {
+  const on = $('f_' + k + '_on').checked;
+  const inp = $('f_' + k);
+  inp.disabled = !on;
+  if (!on) inp.value = ''; else inp.focus();
+}
+
+function readForm() {
+  const plats = {};
+  PLATS.forEach(p => plats[p.k] = {
+    on: $('f_' + p.k + '_on').checked,
+    link: $('f_' + p.k).value.trim(),
+    label: p.label,
+  });
+  return {
     creator: $('f_creator').value.trim(),
     campaign: $('f_campaign').value,
     date: $('f_date').value || null,
-    ig: $('f_ig').value.trim() || null,
-    fb: $('f_fb').value.trim() || null,
-    tt: $('f_tt').value.trim() || null,
+    plats,
   };
+}
+
+function validate(f) {
+  if (!f.creator) return 'Creator name is required.';
+  if (!f.campaign) return 'Select a campaign.';
+  if (!f.date) return 'Date posted is required.';
+  if (!PLATS.some(p => f.plats[p.k].on)) return 'Turn on at least one platform. Content with no links cannot have stats.';
+  for (const p of PLATS) {
+    const v = f.plats[p.k];
+    if (v.on && !v.link) return `${p.label} is on but has no link. Add the link or turn it off.`;
+    if (v.on && !/^https?:\/\//i.test(v.link)) return `${p.label} link should start with http:// or https://`;
+  }
+  return null;
+}
+
+function renderReview(f) {
+  const line = (k, v, off) => `<div class="rv-line"><span class="rv-k">${esc(k)}</span><span class="rv-v ${off ? 'rv-off' : ''}">${esc(v)}</span></div>`;
+  const off = PLATS.filter(p => !f.plats[p.k].on).length;
+  return `<div class="rv"><h4>Check before submitting</h4>
+    ${line('Creator', f.creator)}
+    ${line('Campaign', f.campaign)}
+    ${line('Date posted', fmtD(f.date))}
+    ${PLATS.map(p => line(p.label, f.plats[p.k].on ? f.plats[p.k].link : 'Not used', !f.plats[p.k].on)).join('')}
+    ${off ? `<div class="rv-warn">${off} platform${off > 1 ? 's' : ''} recorded as not used. Go back if that is wrong.</div>` : ''}
+    <div class="rv-warn">Stats for this content are due within 48 hours of submitting.</div>
+  </div>`;
+}
+
+function setEditMode() {
+  REVIEWED = false;
+  $('review').style.display = 'none';
+  document.querySelectorAll('.grid, .plats-form').forEach(el => el.style.display = '');
+  $('backBtn').style.display = 'none';
+  $('addBtn').textContent = 'Review';
+}
+
+$('backBtn').onclick = () => { setEditMode(); $('addMsg').className = 'msg'; $('addMsg').textContent = 'Turn on each platform this went live on, then review before submitting.'; };
+
+$('addBtn').onclick = async () => {
+  const f = readForm();
   const m = $('addMsg'); m.className = 'msg';
-  if (!body.creator) { m.className = 'msg err'; m.textContent = 'Creator name is required.'; return; }
-  if (!body.campaign) { m.className = 'msg err'; m.textContent = 'Select a campaign.'; return; }
-  if (!body.ig && !body.fb && !body.tt) { m.className = 'msg err'; m.textContent = 'At least one post link is required.'; return; }
+
+  if (!REVIEWED) {
+    const err = validate(f);
+    if (err) { m.className = 'msg err'; m.textContent = err; return; }
+    $('review').innerHTML = renderReview(f);
+    $('review').style.display = 'block';
+    document.querySelectorAll('.grid, .plats-form').forEach(el => el.style.display = 'none');
+    $('backBtn').style.display = '';
+    $('addBtn').textContent = 'Confirm and add';
+    m.textContent = 'Check the details above, then confirm.';
+    REVIEWED = true;
+    return;
+  }
+
+  const body = {
+    brand_id: BRAND, type: 'Others Say',
+    creator: f.creator, campaign: f.campaign, date: f.date,
+    ig: f.plats.ig.on ? f.plats.ig.link : null,
+    fb: f.plats.fb.on ? f.plats.fb.link : null,
+    tt: f.plats.tt.on ? f.plats.tt.link : null,
+  };
   $('addBtn').disabled = true; m.textContent = 'Submitting…';
   try {
     const r = await fetch('/api/add-creative', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -241,6 +351,8 @@ $('addBtn').onclick = async () => {
       : 'Added. Stats are due within 48 hours of now.';
     ['f_creator', 'f_date', 'f_ig', 'f_fb', 'f_tt'].forEach(id => $(id).value = '');
     $('f_campaign').selectedIndex = 0;
+    PLATS.forEach(p => { $('f_' + p.k + '_on').checked = false; $('f_' + p.k).disabled = true; });
+    setEditMode();
     setTimeout(load, 4000);
   } catch (e) { m.className = 'msg err'; m.textContent = e.message; }
   finally { $('addBtn').disabled = false; }
