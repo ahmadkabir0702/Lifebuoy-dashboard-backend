@@ -885,16 +885,132 @@ async function regenerateDescription() {
   }
 }
 
+
+// ---------------------------------------------------------------------
+//  Platform toggles + review step
+//  A link field is only editable when its toggle is on, and then it is
+//  required. Turning a platform off is a deliberate "not used", which is
+//  different from leaving a box blank by accident.
+// ---------------------------------------------------------------------
+const AC_PLATS = [
+  { k: 'ig', label: 'Instagram' },
+  { k: 'fb', label: 'Facebook' },
+  { k: 'tt', label: 'TikTok' },
+];
+
+function onPlatToggle(k) {
+  const on = document.getElementById(`ac-${k}-on`).checked;
+  const input = document.getElementById(`ac-${k}`);
+  input.disabled = !on;
+  if (!on) input.value = '';
+  else input.focus();
+}
+
+function acReadForm() {
+  const plats = {};
+  AC_PLATS.forEach(p => {
+    plats[p.k] = {
+      on: document.getElementById(`ac-${p.k}-on`).checked,
+      link: document.getElementById(`ac-${p.k}`).value.trim(),
+      label: p.label,
+    };
+  });
+  return {
+    campaign: document.getElementById('ac-campaign').value,
+    type: document.getElementById('ac-type').value,
+    date: document.getElementById('ac-date').value,
+    repurposed: document.getElementById('ac-repurposed').value || 'No',
+    originalId: document.getElementById('ac-original-id').value || '',
+    plats,
+  };
+}
+
+// Returns an error string, or null when the form is good to review.
+function acValidate(f) {
+  if (!f.date) return 'Select a date.';
+  if (!f.campaign) return 'Select a campaign.';
+  if (!f.type) return 'Select a category.';
+  const anyOn = AC_PLATS.some(p => f.plats[p.k].on);
+  if (!anyOn) return 'Turn on at least one platform. A creative with no links cannot have stats.';
+  for (const p of AC_PLATS) {
+    const v = f.plats[p.k];
+    if (v.on && !v.link) return `${p.label} is on but has no link. Add the link or turn it off.`;
+    if (v.on && !/^https?:\/\//i.test(v.link)) return `${p.label} link should start with http:// or https://`;
+  }
+  return null;
+}
+
+function acRenderReview(f) {
+  const line = (k, v, off) => `<div class="rv-line"><span class="rv-k">${k}</span><span class="rv-v ${off ? 'rv-off' : ''}">${escapeHtml(v)}</span></div>`;
+  const offCount = AC_PLATS.filter(p => !f.plats[p.k].on).length;
+  return `<div class="rv">
+    <h4>Check before submitting</h4>
+    ${line('Date', f.date)}
+    ${line('Campaign', f.campaign)}
+    ${line('Category', f.type)}
+    ${f.type === 'Brand Say' ? line('Repurposed', f.repurposed) : ''}
+    ${f.repurposed === 'Yes' && f.originalId ? line('Original creative', f.originalId) : ''}
+    ${AC_PLATS.map(p => {
+      const v = f.plats[p.k];
+      return line(p.label, v.on ? v.link : 'Not used', !v.on);
+    }).join('')}
+    ${offCount ? `<div class="rv-warn">${offCount} platform${offCount > 1 ? 's' : ''} recorded as not used. Go back if that is wrong.</div>` : ''}
+  </div>`;
+}
+
+function backToEdit() {
+  document.getElementById('ac-review').style.display = 'none';
+  document.getElementById('addCreativeForm').querySelectorAll('input,select').forEach(el => {
+    if (!el.id.startsWith('ac-')) return;
+    el.style.display = '';
+  });
+  document.querySelectorAll('#addCreativeForm .plat-rows').forEach(el => el.style.display = '');
+  ['ac-date', 'ac-campaign', 'ac-type', 'ac-repurposed', 'ac-original-id'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.dataset.acHidden === '1') { el.style.display = el.dataset.acDisplay || ''; delete el.dataset.acHidden; }
+  });
+  document.getElementById('ac-back-btn').style.display = 'none';
+  document.getElementById('ac-confirm-btn').innerText = 'Review';
+  AC_REVIEWED = false;
+}
+
+let AC_REVIEWED = false;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 async function submitCreative(e) {
   e.preventDefault();
-  const campaign = document.getElementById('ac-campaign').value;
-  const type = document.getElementById('ac-type').value;
-  const date = document.getElementById('ac-date').value;
-  const ig = document.getElementById('ac-ig').value;
-  const fb = document.getElementById('ac-fb').value;
-  const tt = document.getElementById('ac-tt').value;
-  const repurposed = document.getElementById('ac-repurposed').value || "No";
-  const originalId = document.getElementById('ac-original-id').value || "";
+
+  const f = acReadForm();
+
+  // First press validates and shows the review. Nothing is sent yet.
+  if (!AC_REVIEWED) {
+    const err = acValidate(f);
+    if (err) { alert(err); return; }
+    const rv = document.getElementById('ac-review');
+    rv.innerHTML = acRenderReview(f);
+    rv.style.display = 'block';
+    ['ac-date', 'ac-campaign', 'ac-type', 'ac-repurposed', 'ac-original-id'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.style.display !== 'none') { el.dataset.acDisplay = el.style.display; el.dataset.acHidden = '1'; el.style.display = 'none'; }
+    });
+    document.querySelectorAll('#addCreativeForm .plat-rows').forEach(el => el.style.display = 'none');
+    document.getElementById('ac-back-btn').style.display = '';
+    document.getElementById('ac-confirm-btn').innerText = 'Confirm and add';
+    AC_REVIEWED = true;
+    return;
+  }
+
+  const campaign = f.campaign;
+  const type = f.type;
+  const date = f.date;
+  const ig = f.plats.ig.on ? f.plats.ig.link : '';
+  const fb = f.plats.fb.on ? f.plats.fb.link : '';
+  const tt = f.plats.tt.on ? f.plats.tt.link : '';
+  const repurposed = f.repurposed;
+  const originalId = f.originalId;
   
   const btnConfirm = document.getElementById('ac-confirm-btn');
   const btnCancel = document.getElementById('ac-cancel-btn');
@@ -1158,6 +1274,21 @@ function resetAddCreativeForm() {
   });
   const orig = document.getElementById('ac-original-id');
   if (orig) orig.style.display = 'none';
+  const rv = document.getElementById('ac-review');
+  if (rv) { rv.innerHTML = ''; rv.style.display = 'none'; }
+  ['ig', 'fb', 'tt'].forEach(k => {
+    const t = document.getElementById(`ac-${k}-on`); if (t) t.checked = false;
+    const i = document.getElementById(`ac-${k}`); if (i) { i.value = ''; i.disabled = true; }
+  });
+  document.querySelectorAll('#addCreativeForm .plat-rows').forEach(el => el.style.display = '');
+  ['ac-date', 'ac-campaign', 'ac-type'].forEach(id => {
+    const el = document.getElementById(id); if (el) { el.style.display = ''; delete el.dataset.acHidden; }
+  });
+  const back = document.getElementById('ac-back-btn');
+  if (back) back.style.display = 'none';
+  const conf = document.getElementById('ac-confirm-btn');
+  if (conf) conf.innerText = 'Review';
+  AC_REVIEWED = false;
   document.getElementById('addCreativeModal').style.pointerEvents = 'auto';
 }
 
