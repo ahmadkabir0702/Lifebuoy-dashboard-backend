@@ -128,6 +128,10 @@ Return ONE JSON object with these keys:
     "d": "<one sentence, present tense, describing what is on screen and what is said or heard in that window>" }
 Cover EVERY window in order. Do NOT merge, skip or group windows — a window where little happens still gets its own entry saying so. ${n ? `The array must contain ${n} entries: t = 0, ${step}, ${step * 2}, and so on up to ${(n - 1) * step}.` : ''} If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover. When someone speaks or sings, write the actual words as close to verbatim as you can make out — do not just note that speech or a voiceover is happening. If a word is genuinely unclear, give your best guess followed by a question mark rather than skip it.
 
+TRANSCRIBE IN THE LANGUAGE SPOKEN. Sri Lankan content is often in Sinhala or Tamil, sometimes mixed with English in the same line. Write the words in the language they are sung or spoken in, using that language's own script, and do not translate them. Never leave words out because they are not in English.
+
+LYRICS COUNT AS SPEECH. In a music video the lyrics are the content, so a window over a sung line must contain that line. Descriptions like "she sings into a microphone", "the chorus plays" or "rap section performed" without the words are not acceptable on their own — the words are what is being asked for. Instrumental passages with no vocals are the one exception; say so plainly for those windows.
+
 Return only the JSON object. No markdown, no commentary.`;
 }
 
@@ -224,15 +228,27 @@ async function analyseVideo(ai, videoPath, hintDuration) {
     const inTok = u.promptTokenCount || 0;
     const outTok = u.candidatesTokenCount || 0;
     const think = u.thoughtsTokenCount || 0;
+    const IN_RATE = Number(process.env.GEMINI_IN_RATE || 0.75) / 1e6;
+    const OUT_RATE = Number(process.env.GEMINI_OUT_RATE || 3.75) / 1e6;
+    const usage = {
+      model: GEMINI_MODEL,
+      input_tokens: inTok,
+      output_tokens: outTok,
+      thinking_tokens: think,
+      total_tokens: u.totalTokenCount || (inTok + outTok + think),
+      // Thinking tokens bill at output rates.
+      cost_usd: Number((inTok * IN_RATE + (outTok + think) * OUT_RATE).toFixed(6)),
+    };
     if (inTok || outTok) {
-      const IN_RATE = Number(process.env.GEMINI_IN_RATE || 0.75) / 1e6;
-      const OUT_RATE = Number(process.env.GEMINI_OUT_RATE || 3.75) / 1e6;
-      const cost = inTok * IN_RATE + (outTok + think) * OUT_RATE;
-      console.log(`[gemini] model=${GEMINI_MODEL} in=${inTok} out=${outTok} thinking=${think} ` +
-                  `total=${u.totalTokenCount || inTok + outTok + think} cost=$${cost.toFixed(4)}`);
+      console.log(`[gemini] model=${usage.model} in=${inTok} out=${outTok} thinking=${think} ` +
+                  `total=${usage.total_tokens} cost=$${usage.cost_usd.toFixed(4)}`);
     }
 
-    return JSON.parse(result.text.replace(/```json|```/g, '').trim());
+    const parsed = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+    // Non-enumerable so it rides along for callers that want it without ever
+    // showing up in JSON.stringify of the analysis itself.
+    Object.defineProperty(parsed, '_usage', { value: usage, enumerable: false });
+    return parsed;
   } finally {
     try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {}
   }
