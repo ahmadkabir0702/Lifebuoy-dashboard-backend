@@ -45,6 +45,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .meta{font-size:13px;color:var(--ink-400);margin:0 0 14px}
 .copy{background:#fff;color:var(--navy);border:1px solid var(--line);width:auto;padding:0 16px;line-height:38px;font-size:13px;margin:6px 0 0}
 pre{background:#0E0E2E;color:#D7D7F0;border-radius:var(--r);padding:16px;font-size:12.5px;line-height:19px;overflow:auto;margin-top:14px}
+  #usage { margin-top: 14px; padding: 12px 14px; border: 1px solid #E1E0EB; border-radius: 8px; background: #F9F9FC; }
+  #usage .uk { font-size: 11px; letter-spacing: .04em; color: #6B6B8A; margin-bottom: 8px; }
+  .u-grid { display: flex; flex-wrap: wrap; gap: 20px; }
+  .u-grid > div { display: flex; flex-direction: column; }
+  .u-grid span { font-size: 11px; color: #6B6B8A; }
+  .u-grid b { font-size: 15px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -70,6 +76,7 @@ pre{background:#0E0E2E;color:#D7D7F0;border-radius:var(--r);padding:16px;font-si
 
   <div class="results" id="results">
     <p class="meta" id="meta"></p>
+    <div id="usage" style="display:none"></div>
     <div id="segs"></div>
     <button class="copy" id="copyJson">Copy raw JSON</button>
     <pre id="raw"></pre>
@@ -115,7 +122,7 @@ go.addEventListener('click', async ()=>{
     });
     const data = await res.json();
     if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
-    render(data.analysis);
+    render(data.analysis, data.usage);
   }catch(e){
     showErr(e.message);
   }finally{
@@ -126,13 +133,38 @@ go.addEventListener('click', async ()=>{
 function esc(s){ return String(s==null?'—':s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 function fmt(t){ const n=Number(t); return Number.isFinite(n) ? n.toFixed(1).replace(/\.0$/,'')+'s' : '?'; }
 
-function render(a){
-  const list = Array.isArray(a.segments) ? a.segments : [];
-  segs.innerHTML = list.map((s,i)=>
+function renderUsage(u){
+  const el = document.getElementById('usage');
+  if (!el) return;
+  if (!u) { el.style.display = 'none'; return; }
+  const n = v => (v || 0).toLocaleString();
+  el.style.display = '';
+  el.innerHTML =
+    `<div class="uk">TOKEN USAGE${u.model ? ' · ' + esc(u.model) : ''}</div>` +
+    `<div class="u-grid">` +
+      `<div><span>Input</span><b>${n(u.input_tokens)}</b></div>` +
+      `<div><span>Output</span><b>${n(u.output_tokens)}</b></div>` +
+      `<div><span>Thinking</span><b>${n(u.thinking_tokens)}</b></div>` +
+      `<div><span>Total</span><b>${n(u.total_tokens)}</b></div>` +
+      `<div><span>Est. cost</span><b>$${(u.cost_usd || 0).toFixed(4)}</b></div>` +
+    `</div>`;
+}
+
+function render(a, usage){
+  // Worker shape: timeline [{t,d}] on a fixed grid. Derive end from the next t.
+  const tl = Array.isArray(a.timeline) ? a.timeline : [];
+  const list = tl.map((s,i)=>({ start:s.t, end: (tl[i+1] ? tl[i+1].t : a.duration), desc:s.d }));
+  const head =
+    `<div class="seg" style="border-left:3px solid #1877f2">`+
+    `<div class="k">FORMAT</div><div class="v"><b>${esc(a.format)}</b> · product role: <b>${esc(a.product_role)}</b></div>`+
+    `<div class="v" style="margin-top:6px">${esc(a.format_note)}</div></div>`+
+    `<div class="seg"><div class="k">HOOK</div><div class="v">${esc(a.hook)}</div></div>`;
+  segs.innerHTML = head + (list.map((s,i)=>
     `<div class="seg"><div class="k">${String(i+1).padStart(2,'0')} · ${fmt(s.start)}–${fmt(s.end)}</div>`+
-    `<div class="v">${esc(s.desc)}</div></div>`).join('') || '<div class="seg"><div class="v">No segments returned.</div></div>';
+    `<div class="v">${esc(s.desc)}</div></div>`).join('') || '<div class="seg"><div class="v">No timeline returned.</div></div>');
   meta.textContent = (a.duration!=null ? 'Duration ≈ '+a.duration+'s' : '') +
                      (list.length ? '  ·  '+list.length+' windows' : '');
+  renderUsage(usage);
   raw.textContent = JSON.stringify(a, null, 2);
   results.classList.add('show');
   results.scrollIntoView({behavior:'smooth', block:'start'});
