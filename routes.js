@@ -419,7 +419,8 @@ app.get('/api/brands', async (req, res) => {
                     product_role: a.product_role || null,
                     format_note: a.format_note || null,
                     segments: [a.seg1, a.seg2, a.seg3, a.seg4],
-                    duration: safeDur }
+                    duration: safeDur },
+        usage: a._usage || null
       });
     } catch (err) {
       console.error('[regenerate-description]', err.message);
@@ -609,7 +610,23 @@ app.get('/api/brands', async (req, res) => {
         });
 
         const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
-        res.json({ success: true, analysis: a });
+        // Same accounting as the worker: thinking tokens bill at output rates.
+        const u = result.usageMetadata || {};
+        const inTok = u.promptTokenCount || 0;
+        const outTok = u.candidatesTokenCount || 0;
+        const think = u.thoughtsTokenCount || 0;
+        const IN_RATE = Number(process.env.GEMINI_IN_RATE || 0.75) / 1e6;
+        const OUT_RATE = Number(process.env.GEMINI_OUT_RATE || 3.75) / 1e6;
+        const usage = {
+          model: GEMINI_MODEL,
+          input_tokens: inTok,
+          output_tokens: outTok,
+          thinking_tokens: think,
+          total_tokens: u.totalTokenCount || (inTok + outTok + think),
+          cost_usd: Number((inTok * IN_RATE + (outTok + think) * OUT_RATE).toFixed(6)),
+        };
+        console.log(`[describe-upload] in=${inTok} out=${outTok} thinking=${think} cost=$${usage.cost_usd.toFixed(4)}`);
+        res.json({ success: true, analysis: a, usage });
       } catch (err) {
         console.error('[describe-upload]', err.message);
         if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
