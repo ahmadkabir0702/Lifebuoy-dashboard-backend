@@ -112,9 +112,15 @@ async function buildPayload(brandId) {
                     kpi_spend, kpi_reach, kpi_impressions, kpi_frequency
                from account_monthly where brand_id = $1 order by month`, [brandId]),
 
-      query(`select distinct campaign from creatives
+      // Campaigns come from their own table now, so a campaign can be created
+      // before any creative uses it. Union with what creatives already carry so
+      // nothing that predates the table drops out of the dropdowns.
+      query(`select name as campaign from campaigns
+              where brand_id = $1 and is_active = true
+             union
+             select distinct campaign from creatives
               where brand_id = $1 and campaign is not null and campaign <> ''
-              order by campaign`, [brandId])
+             order by campaign`, [brandId])
     ]);
 
   const metaBy  = Object.fromEntries(metaR.rows.map(r => [r.creative_id, r]));
