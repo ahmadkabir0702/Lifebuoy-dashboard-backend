@@ -8,6 +8,28 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
   <link rel="stylesheet" href="/css/pretest.css">
   <link rel="stylesheet" href="/css/pretest-light.css">
+<style id="ac-plat-style">
+  .plat-rows { margin-bottom: 10px; }
+  .plat-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .plat-row .plat-input { flex: 1; margin: 0; }
+  .plat-row .plat-input:disabled { background: #F4F6F8; color: #A0A0B8; }
+  .tgl { position: relative; display: inline-block; width: 38px; height: 22px; flex: none; cursor: pointer; }
+  .tgl input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .tgl-track { position: absolute; inset: 0; background: #DCDCE6; border-radius: 999px; transition: background .15s; }
+  .tgl-track::before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; top: 3px;
+                       background: #fff; border-radius: 50%; transition: transform .15s; }
+  .tgl input:checked + .tgl-track { background: #000050; }
+  .tgl input:checked + .tgl-track::before { transform: translateX(16px); }
+  .plat-hint { font-size: 12px; color: #6B6B8A; margin-top: 2px; }
+  .rv { border: 1px solid #DCDCE6; border-radius: 8px; padding: 14px; background: #F9F9FC; margin-top: 4px; }
+  .rv h4 { margin: 0 0 10px; font-size: 13px; color: #000050; }
+  .rv-line { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #ECECF3; font-size: 13px; }
+  .rv-line:last-child { border-bottom: 0; }
+  .rv-k { color: #6B6B8A; }
+  .rv-v { text-align: right; word-break: break-all; max-width: 62%; }
+  .rv-off { color: #A0A0B8; }
+  .rv-warn { margin-top: 10px; font-size: 12px; color: #B7791F; }
+</style>
 </head>
 <body>
 
@@ -241,9 +263,23 @@
              <option value="" disabled selected>Select Original Creative ID</option>
              </select>
            
-           <input type="text" id="ac-ig" class="modal-input" style="margin-bottom:10px;" placeholder="IG Link">
-           <input type="text" id="ac-fb" class="modal-input" style="margin-bottom:10px;" placeholder="FB Link">
-           <input type="text" id="ac-tt" class="modal-input" style="margin-bottom:10px;" placeholder="TikTok Link">
+           <div class="plat-rows">
+             <div class="plat-row">
+               <label class="tgl"><input type="checkbox" id="ac-ig-on" onchange="onPlatToggle('ig')"><span class="tgl-track"></span></label>
+               <input type="text" id="ac-ig" class="modal-input plat-input" placeholder="Instagram link" disabled>
+             </div>
+             <div class="plat-row">
+               <label class="tgl"><input type="checkbox" id="ac-fb-on" onchange="onPlatToggle('fb')"><span class="tgl-track"></span></label>
+               <input type="text" id="ac-fb" class="modal-input plat-input" placeholder="Facebook link" disabled>
+             </div>
+             <div class="plat-row">
+               <label class="tgl"><input type="checkbox" id="ac-tt-on" onchange="onPlatToggle('tt')"><span class="tgl-track"></span></label>
+               <input type="text" id="ac-tt" class="modal-input plat-input" placeholder="TikTok link" disabled>
+             </div>
+             <div class="plat-hint">Turn on every platform this creative went live on. A platform left off is recorded as not used.</div>
+           </div>
+
+           <div id="ac-review" style="display:none"></div>
            
          <div id="ac-progress-container" style="display:none; margin-top: 15px; padding: 15px; background: #F4F6F8; border-radius: 6px; border: 1px solid #DCDCE6;">
              <div style="font-weight: bold; color: #000050; margin-bottom: 8px; font-size: 13px;">Processing Creative</div>
@@ -256,7 +292,8 @@
         <div id="ac-summary" style="display:none; margin-top:15px;"></div>
            <div class="modal-actions" style="margin-top: 15px;">
              <button type="button" id="ac-cancel-btn" class="modal-btn modal-cancel" onclick="closeAddCreativeModal()">Cancel</button>
-             <button type="submit" id="ac-confirm-btn" class="modal-btn modal-confirm">Add creative</button>
+             <button type="button" id="ac-back-btn" class="modal-btn" style="display:none" onclick="backToEdit()">Back</button>
+             <button type="submit" id="ac-confirm-btn" class="modal-btn modal-confirm">Review</button>
              <button type="button" id="ac-regen-btn" class="modal-btn" style="display:none" onclick="regenerateDescription()">Retry analysis</button>
              <button type="button" id="ac-done-btn" class="modal-btn modal-confirm" style="display:none" onclick="closeAddCreativeModal(); location.reload();">Done</button>
            </div>
