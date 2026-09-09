@@ -580,19 +580,73 @@ function buildOrganicHTML(d) {
 }
 
 function buildCreativeBriefHTML(d) {
-  if (!d.contentHook && (!d.segments || d.segments.length === 0)) return '';
-  const segLabels = ['0–25%', '25–50%', '50–75%', '75–100%'];
-  const segsHTML = d.segments && d.segments.length > 0
-    ? `<div class="brief-segs">${d.segments.map((s,i) => `<div class="seg-row"><div class="seg-label">${segLabels[i]||`Seg ${i+1}`}</div><div class="seg-text">${s}</div></div>`).join('')}</div>`
-    : '';
+  const timeline = Array.isArray(d.timeline) ? d.timeline : [];
+  const hasQuartiles = d.segments && d.segments.length > 0;
+  if (!d.contentHook && !timeline.length && !hasQuartiles) return '';
+
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Format classification, when the creative has been analysed with it.
+  const FORMAT_LABEL = {
+    music_video:'Music video', product_demo:'Product demo', talking_head:'Talking head',
+    testimonial:'Testimonial', lifestyle:'Lifestyle', tutorial:'Tutorial',
+    ugc:'UGC', animation:'Animation', other:'Other',
+  };
+  const ROLE_LABEL = {
+    hero:'Product is the subject', featured:'Product featured',
+    incidental:'Product incidental', absent:'Product not shown',
+  };
+  const metaBits = [
+    FORMAT_LABEL[d.format] ? `<span class="brief-tag">${FORMAT_LABEL[d.format]}</span>` : '',
+    ROLE_LABEL[d.productRole] ? `<span class="brief-tag brief-tag-quiet">${ROLE_LABEL[d.productRole]}</span>` : '',
+    d.duration ? `<span class="brief-tag brief-tag-quiet">${d.duration}s</span>` : '',
+  ].filter(Boolean).join('');
+
+  // The scene timeline, grouped into quarters so a 76-window video is
+  // readable. Each row is a real window with its timestamp.
+  let timelineHTML = '';
+  if (timeline.length) {
+    const total = d.duration || (timeline[timeline.length-1].t + 2);
+    const groups = [
+      { label:'First quarter',  from:0,           to:total*0.25 },
+      { label:'Second quarter', from:total*0.25,  to:total*0.5 },
+      { label:'Third quarter',  from:total*0.5,   to:total*0.75 },
+      { label:'Final quarter',  from:total*0.75,  to:Infinity },
+    ];
+    timelineHTML = `<div class="brief-timeline">` + groups.map(g => {
+      const rows = timeline.filter(s => s.t >= g.from && s.t < g.to);
+      if (!rows.length) return '';
+      return `<div class="brief-group">
+          <div class="brief-group-label">${g.label} <span class="brief-group-range">${fmtBriefTs(rows[0].t)}–${fmtBriefTs(rows[rows.length-1].t)}</span></div>
+          ${rows.map(s => `<div class="brief-scene"><span class="brief-ts">${fmtBriefTs(s.t)}</span><span class="brief-scene-text">${esc(s.d)}</span></div>`).join('')}
+        </div>`;
+    }).join('') + `</div>`;
+  } else if (hasQuartiles) {
+    // Creatives described before the timeline format existed.
+    const segLabels = ['0–25%', '25–50%', '50–75%', '75–100%'];
+    timelineHTML = `<div class="brief-segs">${d.segments.map((s,i) =>
+      `<div class="seg-row"><div class="seg-label">${segLabels[i]||`Seg ${i+1}`}</div><div class="seg-text">${esc(s)}</div></div>`).join('')}</div>`;
+  }
+
+  const sceneCount = timeline.length ? `<span class="brief-count">${timeline.length} scenes</span>` : '';
+
   return `
     <details class="org-details" style="margin-top:12px;">
       <summary class="org-summary">Creative Brief <span style="color:var(--c-muted);font-size:10px;">Click to expand ▼</span></summary>
       <div class="org-content">
-        ${d.contentHook ? `<div class="brief-hook"><span class="brief-hook-label">Hook</span><div class="brief-hook-text">${d.contentHook}</div></div>` : ''}
-        ${segsHTML}
+        ${metaBits ? `<div class="brief-tags">${metaBits}</div>` : ''}
+        ${d.formatNote ? `<div class="brief-note">${esc(d.formatNote)}</div>` : ''}
+        ${d.contentHook ? `<div class="brief-hook"><span class="brief-hook-label">Hook</span><div class="brief-hook-text">${esc(d.contentHook)}</div></div>` : ''}
+        ${timelineHTML ? `<div class="brief-timeline-head"><span class="brief-hook-label">Scene by scene</span>${sceneCount}</div>${timelineHTML}` : ''}
       </div>
     </details>`;
+}
+
+function fmtBriefTs(t) {
+  const n = Number(t);
+  if (!Number.isFinite(n)) return String(t);
+  const m = Math.floor(n / 60), s = Math.round(n % 60);
+  return m ? `${m}:${String(s).padStart(2,'0')}` : `0:${String(s).padStart(2,'0')}`;
 }
 
 // ── Lineage ───────────────────────────────────────────────────────────────────
