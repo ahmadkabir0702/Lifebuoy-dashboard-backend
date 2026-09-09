@@ -29,6 +29,25 @@
   .rv-v { text-align: right; word-break: break-all; max-width: 62%; }
   .rv-off { color: #A0A0B8; }
   .rv-warn { margin-top: 10px; font-size: 12px; color: #B7791F; }
+  /* Structured recommendations */
+  .sheet-rec-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .rec-chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .rec-chip { font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .rec-chip-high { background:#FCEBEA; color:#B3261E; }
+  .rec-chip-med  { background:#FCF3E3; color:#8A5A12; }
+  .rec-chip-low  { background:#EEF1F6; color:#4A4A75; }
+  .rec-chip-type { background:#E8F0FE; color:#1552B0; }
+  .rec-chip-low-conf { background:#F4F4F8; color:#6B6B8A; }
+  .rec-verdict { font-size:14px; font-weight:600; color:#000050; margin:10px 0 12px; line-height:1.45; }
+  .rec-part { padding:9px 0 9px 11px; border-left:3px solid #DCDCE6; margin-bottom:9px; }
+  .rec-part.rec-good   { border-left-color:#04785C; }
+  .rec-part.rec-bad    { border-left-color:#A32040; }
+  .rec-part.rec-action { border-left-color:#000050; background:#F7F7FB; border-radius:0 6px 6px 0; }
+  .rec-part-label { font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#6B6B8A; margin-bottom:3px; }
+  .rec-part-text { font-size:13px; line-height:1.55; color:#22224A; }
+  .rec-evidence { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .rec-ts { font-size:11px; font-family:ui-monospace,Menlo,monospace; padding:2px 7px; border-radius:4px;
+            background:#EEF1F6; color:#4A4A75; cursor:help; }
 </style>
 </head>
 <body>
