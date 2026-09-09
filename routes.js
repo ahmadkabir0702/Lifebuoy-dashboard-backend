@@ -15,6 +15,9 @@ const os = require('os');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { query, brandsForUser, assertBrandAllowed } = require('./db');
+// Prompt + response schema live in worker.js so the queue, the regenerate
+// endpoint and the upload test page all analyse videos identically.
+const { buildPrompt, normaliseTimeline, RESPONSE_SCHEMA } = require('./worker');
 // Gemini model. Google retires these on their own schedule — 2.5-flash was
 // pulled for new users — so it is an env var, changeable without a deploy.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
@@ -379,7 +382,6 @@ app.get('/api/brands', async (req, res) => {
 
       // Same shape as the worker so a regenerate cannot leave a creative with
       // quartile segments but no timeline.
-      const { buildPrompt, normaliseTimeline, RESPONSE_SCHEMA } = require('./worker');
       const prompt = buildPrompt(rows[0].duration_s || null);
 
       const result = await ai.models.generateContent({
