@@ -65,11 +65,53 @@ module.exports = function mountRoutes(app, deps = {}) {
       req.session.activeBrand = access.brands[0];
       req.session.save(err => {
         if (err) { console.error('[login] session save:', err); return res.redirect('/login?error=1'); }
-        res.redirect('/');
+        res.redirect(req.session.role === 'influencer_coordinator' ? '/coordinator' : '/');
       });
     } catch (err) {
       console.error('[login] failed:', err.message);
       res.redirect('/login?error=1');
+    }
+  });
+
+  // -------------------------------------------------------------------
+  //  Campaigns. Real rows, so a campaign can exist before any creative
+  //  uses it and every form can pick from a list instead of free text.
+  // -------------------------------------------------------------------
+  app.get('/api/campaigns', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      const { rows } = await query(
+        `select name from campaigns
+          where brand_id = $1 and is_active = true
+         union
+         select distinct campaign from creatives
+          where brand_id = $1 and campaign is not null and campaign <> ''
+         order by name`,
+        [brand]
+      );
+      res.json(rows.map(r => r.name));
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/campaigns', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      // Adding campaigns is an internal job, not a coordinator one.
+      if (req.session.role === 'influencer_coordinator') {
+        return res.status(403).json({ error: 'Not permitted for this role' });
+      }
+      const name = (req.body.name || '').trim();
+      if (!name) return res.status(400).json({ error: 'Campaign name is required.' });
+      await query(
+        `insert into campaigns (brand_id, name) values ($1,$2)
+         on conflict (brand_id, name) do update set is_active = true`,
+        [brand, name]
+      );
+      res.json({ success: true, name });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
     }
   });
 
@@ -220,7 +262,7 @@ app.get('/api/brands', async (req, res) => {
   //  ADD CREATIVE — writes to `creatives`, then Gemini fills the rest
   // -------------------------------------------------------------------
  app.post('/api/add-creative', async (req, res) => {
-    const { campaign, type, date, ig, fb, tt, repurposed, originalId } = req.body;
+    const { campaign, type, date, ig, fb, tt, repurposed, originalId, creator } = req.body;
     let brand;
     try { brand = resolveBrand(req); }
     catch (err) { return res.status(403).json({ error: err.message }); }
@@ -250,6 +292,7 @@ app.get('/api/brands', async (req, res) => {
             creativeId, brand, campaign, type, date: date || null,
             repurposed: repurposed === 'Yes', originalId: originalId || null,
             ig: ig || null, fb: fb || null, tt: tt || null,
+            creator: creator || null,
             mediaUrl: videoLink,
             platform: videoLink.includes('instagram.com') ? 'instagram'
                     : videoLink.includes('tiktok.com') ? 'tiktok' : 'facebook',
@@ -277,10 +320,10 @@ app.get('/api/brands', async (req, res) => {
       await query(
         `insert into creatives
            (creative_id, brand_id, date, campaign, type, is_repurposed,
-            original_creative_id, content_type, ig_link, fb_link, tt_link)
-         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',$8,$9,$10)`,
+            original_creative_id, content_type, ig_link, fb_link, tt_link, creator_profile)
+         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',$8,$9,$10,$11)`,
         [creativeId, brand, date || null, campaign, type, repurposed === 'Yes',
-         originalId || null, ig || null, fb || null, tt || null]
+         originalId || null, ig || null, fb || null, tt || null, creator || null]
       );
       return res.json({
         success: true, creativeId, queued: false,
@@ -445,6 +488,9 @@ app.get('/api/brands', async (req, res) => {
       const { rows } = await query(
         `select c.creative_id, c.campaign, c.creator_profile, c.duration_s,
                 c.ig_link, c.fb_link, c.tt_link,
+                c.date, c.created_at, c.format, c.content_hook,
+                c.created_at + interval '48 hours' as deadline,
+                round(extract(epoch from (now() - c.created_at)) / 3600, 1) as hours_since_upload,
                 coalesce(
                   json_agg(json_build_object(
                     'platform', o.platform, 'views', o.views, 'likes', o.likes,
@@ -457,8 +503,9 @@ app.get('/api/brands', async (req, res) => {
            left join organic_perf o on o.creative_id = c.creative_id
           where c.brand_id = $1 and c.type = 'Others Say'
           group by c.creative_id, c.campaign, c.creator_profile, c.duration_s,
-                   c.ig_link, c.fb_link, c.tt_link
-          order by c.date desc nulls last`,
+                   c.ig_link, c.fb_link, c.tt_link,
+                   c.date, c.created_at, c.format, c.content_hook
+          order by c.created_at desc`,
         [brand]
       );
       res.json(rows);
@@ -546,20 +593,9 @@ app.get('/api/brands', async (req, res) => {
         }
         if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
 
-        const prompt = `Watch this video carefully and describe it in consecutive 2.5-second windows.
-
-Rules:
-- Start at 0s and step in exact 2.5-second windows (0–2.5, 2.5–5.0, 5.0–7.5, …) until the very end of the video. The final window may be shorter than 2.5s if the clip does not divide evenly — clamp its "end" to the true video length.
-- Cover the ENTIRE video. Do not skip time. Do not merge windows. A 60-second video must produce 24 windows.
-- For each window write 1-2 specific sentences: what is on screen (people, product, setting, colours), on-screen text word-for-word if legible, and actions. If anyone speaks or sings, write the actual words as close to verbatim as you can make out, not just that speech is happening. If a word is genuinely unclear, give your best guess followed by a question mark rather than skip it.
-
-Return ONLY a JSON object with these keys, no markdown, no extra text:
-{
-  "duration": <total length in seconds, number>,
-  "segments": [
-    { "start": <number>, "end": <number>, "desc": "<string>" }
-  ]
-}`;
+        // Same prompt and schema as the worker, so the test page shows exactly
+        // what a real analysis would store, including format classification.
+        const prompt = buildPrompt(null);
 
         const result = await ai.models.generateContent({
           model: GEMINI_MODEL,
@@ -567,7 +603,7 @@ Return ONLY a JSON object with these keys, no markdown, no extra text:
             { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
             { text: prompt }
           ]}],
-          config: { responseMimeType: 'application/json', maxOutputTokens: 8000 }
+          config: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, maxOutputTokens: 16000 }
         });
 
         const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
