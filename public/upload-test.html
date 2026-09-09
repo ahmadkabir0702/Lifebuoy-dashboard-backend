@@ -120,7 +120,15 @@ go.addEventListener('click', async ()=>{
       headers:{ 'Content-Type':'application/octet-stream' },
       body: chosen
     });
-    const data = await res.json();
+    const raw = await res.text();
+    if (/^\s*<(?:!doctype|html)/i.test(raw)) {
+      throw new Error(res.status === 401 || res.redirected
+        ? 'Your session has expired. Reload the page and sign in again.'
+        : `Server returned a page instead of data (HTTP ${res.status}).`);
+    }
+    let data;
+    try { data = JSON.parse(raw); }
+    catch { throw new Error(`Unreadable response (HTTP ${res.status}): ${raw.slice(0,160)}`); }
     if(!res.ok || !data.success) throw new Error(data.error || ('HTTP '+res.status));
     render(data.analysis, data.usage);
   }catch(e){
