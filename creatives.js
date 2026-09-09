@@ -66,6 +66,18 @@ function paidBlock(row, platform) {
     // no reconstruction — this is what killed the Video Plays hack.
     ret: [100, hook, r1(row.w25), r1(row.w50), r1(row.w75), r1(row.w100)],
     recommendation: row.recommendation || '',
+    // Structured fields from the recommendation. Null on rows written before
+    // the structured schema, so the renderer falls back to the text blob.
+    rec: row.verdict || row.action ? {
+      verdict: row.verdict || '',
+      working: row.working || '',
+      notWorking: row.not_working || '',
+      action: row.action || '',
+      actionType: row.action_type || '',
+      priority: row.priority || '',
+      confidence: row.confidence || '',
+      evidence: Array.isArray(row.evidence) ? row.evidence : [],
+    } : null,
     actionStatus: row.action_status || '',
     actionBy: row.actioned_by || '',
     actionDate: row.action_date ? new Date(row.action_date).toISOString().slice(0, 10) : '',
@@ -231,6 +243,7 @@ async function buildPayload(brandId) {
 
       // actions (combined view takes meta first, then tiktok)
       recommendation: (m || t || {}).recommendation || '',
+      rec:            (m || t || {}).rec || null,
       actionStatus:   (m || t || {}).actionStatus || '',
       actionBy:       (m || t || {}).actionBy || '',
       actionDate:     (m || t || {}).actionDate || '',
