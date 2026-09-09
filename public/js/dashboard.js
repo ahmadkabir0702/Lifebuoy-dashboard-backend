@@ -898,12 +898,25 @@ const AC_PLATS = [
   { k: 'tt', label: 'TikTok' },
 ];
 
+// The checkbox is the single source of truth for whether a link field is
+// editable. form.reset() unchecks boxes without firing change, so anything
+// that resets the form must call syncPlatFields() rather than set .disabled
+// itself — that drift is what left a toggle on with its box still disabled.
+function syncPlatFields({ clearOff = true } = {}) {
+  AC_PLATS.forEach(p => {
+    const box = document.getElementById(`ac-${p.k}-on`);
+    const input = document.getElementById(`ac-${p.k}`);
+    if (!box || !input) return;
+    input.disabled = !box.checked;
+    if (!box.checked && clearOff) input.value = '';
+  });
+}
+
 function onPlatToggle(k) {
-  const on = document.getElementById(`ac-${k}-on`).checked;
+  syncPlatFields();
+  const box = document.getElementById(`ac-${k}-on`);
   const input = document.getElementById(`ac-${k}`);
-  input.disabled = !on;
-  if (!on) input.value = '';
-  else input.focus();
+  if (box && box.checked && input) input.focus();
 }
 
 function acReadForm() {
@@ -1276,10 +1289,10 @@ function resetAddCreativeForm() {
   if (orig) orig.style.display = 'none';
   const rv = document.getElementById('ac-review');
   if (rv) { rv.innerHTML = ''; rv.style.display = 'none'; }
-  ['ig', 'fb', 'tt'].forEach(k => {
-    const t = document.getElementById(`ac-${k}-on`); if (t) t.checked = false;
-    const i = document.getElementById(`ac-${k}`); if (i) { i.value = ''; i.disabled = true; }
+  AC_PLATS.forEach(p => {
+    const t = document.getElementById(`ac-${p.k}-on`); if (t) t.checked = false;
   });
+  syncPlatFields();
   document.querySelectorAll('#addCreativeForm .plat-rows').forEach(el => el.style.display = '');
   ['ac-date', 'ac-campaign', 'ac-type'].forEach(id => {
     const el = document.getElementById(id); if (el) { el.style.display = ''; delete el.dataset.acHidden; }
@@ -1302,4 +1315,4 @@ function resetSubmitUI(delay = 0) {
   }, delay);
 }
 
-loadBrands().then(loadData);
+loadBrands().then(loadData);    
