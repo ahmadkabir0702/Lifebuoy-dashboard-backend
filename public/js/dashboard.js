@@ -1153,92 +1153,6 @@ function showQueuedConfirmation(result) {
   `;
 }
 
-async function regenerateDescription() {
-  const btn = document.getElementById('ac-regen-btn');
-  const orig = btn.innerText;
-  btn.innerText = 'Analysing...'; btn.disabled = true;
-  try {
-    const res = await fetch('/api/regenerate-description', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ creative_id: LAST_CREATIVE_ID }),
-      signal: AbortSignal.timeout(120000)
-    });
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-    showCreativeSummary(result);
-  } catch (err) {
-    // yt-dlp writes warnings to stderr; the real cause is the last line.
-    const lines = String(err.message).split('\n').filter(l => l.trim() && !/^\s*(WARNING|It is strongly|Run "yt-dlp|To suppress|Pre-merged|To prioritize)/.test(l));
-    alert('Analysis failed: ' + (lines.pop() || err.message).trim());
-  } finally {
-    btn.innerText = orig; btn.disabled = false;
-  }
-}
-
-async function submitCreative(e) {
-  e.preventDefault();
-  const campaign = document.getElementById('ac-campaign').value;
-  const type = document.getElementById('ac-type').value;
-  const date = document.getElementById('ac-date').value;
-  const ig = document.getElementById('ac-ig').value;
-  const fb = document.getElementById('ac-fb').value;
-  const tt = document.getElementById('ac-tt').value;
-  const repurposed = document.getElementById('ac-repurposed').value || "No";
-  const originalId = document.getElementById('ac-original-id').value || "";
-  
-  const btnConfirm = document.getElementById('ac-confirm-btn');
-  const btnCancel = document.getElementById('ac-cancel-btn');
-  const progressContainer = document.getElementById('ac-progress-container');
-  const progressText = document.getElementById('ac-progress-text');
-  const progressBar = document.getElementById('ac-progress-bar');
-
-  btnConfirm.disabled = true;
-  btnCancel.disabled = true;
-  document.getElementById('addCreativeModal').style.pointerEvents = 'none';
-  progressContainer.style.display = 'block';
-
-  const setProgress = (pct, msg, color) => {
-    progressBar.style.width = pct + '%';
-    progressBar.style.background = color || '#000050';
-    progressText.innerText = msg;
-  };
-
-  setProgress(10, 'Submitting creative details...', '#000050');
-
-  try {
-    const t1 = setTimeout(() => setProgress(30, 'Downloading video...', '#000050'), 800);
-    const t2 = setTimeout(() => setProgress(55, 'AI is analysing content...', '#000050'), 4000);
-    const t3 = setTimeout(() => setProgress(75, 'Generating hook & segment descriptions...', '#000050'), 15000);
-    const t4 = setTimeout(() => setProgress(90, 'Saving to database...', '#000050'), 35000);
-
-    const res = await fetch('/api/add-creative', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME }),
-      signal: AbortSignal.timeout(120000)
-    });
-    clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
-
-    const result = await res.json();
-    if (result.success) {
-      // Queued work is confirmed, not watched. A progress bar here would be
-      // polling theatre — the analysis takes minutes and the result arrives
-      // by email, so say what happened and let the user get on with it.
-      showQueuedConfirmation(result);
-    } else {
-      setProgress(100, 'Failed: ' + (result.error || 'Unknown error'), '#A32040');
-      progressBar.style.background = '#A32040';
-      resetSubmitUI(3000);
-    }
-  } catch (err) {
-    console.error(err);
-    setProgress(100, 'Network error — could not reach server.', '#A32040');
-    progressBar.style.background = '#A32040';
-    resetSubmitUI(3000);
-  }
-}
-
 function showQueuedConfirmation(result) {
   const form = document.getElementById('addCreativeForm');
   if (!form) return;
@@ -1315,4 +1229,4 @@ function resetSubmitUI(delay = 0) {
   }, delay);
 }
 
-loadBrands().then(loadData);    
+loadBrands().then(loadData);
