@@ -325,8 +325,20 @@ if (sf === 'ACTIVE')                data = data.filter(d => d.adStatus === 'ACTI
     else if (currentSort==='reach') { valA = a.reach; valB = b.reach; }
     else if (currentSort==='spend') { valA = a.spend; valB = b.spend; }
     else if (currentSort==='cqr')   { const o={Good:0,Average:1,Poor:2,Invalid:3}; valB=(o[a.cqr]??4); valA=(o[b.cqr]??4); }
+    // Date Posted had a button but no branch here, so it silently did nothing.
+    // Blank dates sort last in either direction rather than jumping to the top.
+    else if (currentSort==='date')  { valA = ts(a.date);    valB = ts(b.date); }
+    else if (currentSort==='added') { valA = ts(a.addedAt); valB = ts(b.addedAt); }
     return sortAscending ? valA - valB : valB - valA;
   });
+}
+
+// Missing dates must not out-rank real ones. -Infinity in ascending order and
+// the same value flipped in descending keeps them at the bottom either way.
+function ts(v) {
+  if (!v) return sortAscending ? Infinity : -Infinity;
+  const t = Date.parse(v);
+  return Number.isNaN(t) ? (sortAscending ? Infinity : -Infinity) : t;
 }
 
 function hookColor(v) { return v>=40?'#04785C':v>=20?'#8A5A12':'#A32040'; }
