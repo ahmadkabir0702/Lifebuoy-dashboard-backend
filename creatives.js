@@ -92,6 +92,7 @@ async function buildPayload(brandId) {
 
       query(`select creative_id, date, campaign, type, is_repurposed,
                     original_creative_id, content_hook, seg1, seg2, seg3, seg4, segments,
+                    format, product_role, format_note,
                     content_type, duration_s, creator_profile, created_at,
                     ig_link, fb_link, tt_link
                from creatives where brand_id = $1
@@ -223,6 +224,10 @@ async function buildPayload(brandId) {
       // Fixed-interval descriptions: [{ t: seconds, d: text }]. Time-indexed so
       // it can be read against the retention curve.
       timeline: Array.isArray(c.segments) ? c.segments : [],
+      // Format classification from the Gemini analysis, shown in the brief.
+      format: c.format || '',
+      productRole: c.product_role || '',
+      formatNote: c.format_note || '',
       contentType: c.content_type || '',
       creativeLink: c.ig_link || c.tt_link || c.fb_link || '',
       igLink: c.ig_link || '', fbLink: c.fb_link || '', ttLink: c.tt_link || '',
