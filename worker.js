@@ -71,6 +71,13 @@ const RESPONSE_SCHEMA = {
   type: 'object',
   properties: {
     duration: { type: 'number' },
+    format: {
+      type: 'string',
+      enum: ['music_video', 'product_demo', 'talking_head', 'testimonial',
+             'lifestyle', 'tutorial', 'ugc', 'animation', 'other'],
+    },
+    product_role: { type: 'string', enum: ['hero', 'featured', 'incidental', 'absent'] },
+    format_note: { type: 'string' },
     hook: { type: 'string' },
     timeline: {
       type: 'array',
@@ -84,8 +91,8 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ['duration', 'hook', 'timeline'],
-  propertyOrdering: ['duration', 'hook', 'timeline'],
+  required: ['duration', 'format', 'product_role', 'format_note', 'hook', 'timeline'],
+  propertyOrdering: ['duration', 'format', 'product_role', 'format_note', 'hook', 'timeline'],
 };
 
 function buildPrompt(hintDuration) {
@@ -98,6 +105,21 @@ function buildPrompt(hintDuration) {
 Return ONE JSON object with these keys:
 
 "duration": the exact length of the video in seconds (number).
+
+"format": what kind of video this is. Exactly one of:
+  "music_video" — a song is the primary content and someone performs it on screen or as the audio.
+  "product_demo" — the product and how it is used or what it does is the main subject.
+  "talking_head" — a person addresses the camera directly for most of the runtime.
+  "testimonial" — a person recounts their own experience with the product.
+  "lifestyle" — mood, scenery and daily-life moments; the product is incidental to the scene.
+  "tutorial" — the video teaches steps, a routine or a how-to.
+  "ugc" — casual, handheld, creator-style footage.
+  "animation" — animated or motion graphics with no live footage.
+  "other" — none of the above fit.
+
+"product_role": how present the product is. Exactly one of "hero" (the product is the main subject and on screen most of the time), "featured" (it has a clear moment but is not the subject throughout), "incidental" (it appears briefly or as a prop), "absent" (it never appears on screen).
+
+"format_note": one sentence explaining the classification, naming who is on screen and what they are doing in relation to the brand. Example: "Original song performed by the artist on screen; the lotion appears as a prop in the closing scene." If someone sings, say so here and do not describe the singing as speech.
 
 "hook": 1-2 sentences describing the opening hook — what grabs attention in the first two seconds.
 
@@ -323,16 +345,22 @@ function makeProcessor(ai) {
         `insert into creatives
            (creative_id, brand_id, date, campaign, type, is_repurposed,
             original_creative_id, content_type, ig_link, fb_link, tt_link,
-            content_hook, duration_s, segments)
+            content_hook, duration_s, segments,
+            format, product_role, format_note)
          values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',
-                 $8,$9,$10,$11,$12,$13)
+                 $8,$9,$10,$11,$12,$13,
+                 $14,$15,$16)
          on conflict (creative_id) do update set
            content_hook = excluded.content_hook,
            duration_s = coalesce(excluded.duration_s, creatives.duration_s),
-           segments = excluded.segments`,
+           segments = excluded.segments,
+           format = excluded.format,
+           product_role = excluded.product_role,
+           format_note = excluded.format_note`,
         [creativeId, d.brand, d.date, d.campaign, d.type, d.repurposed,
          d.originalId, d.ig, d.fb, d.tt,
-         a.hook, safeDur, JSON.stringify(timeline)]
+         a.hook, safeDur, JSON.stringify(timeline),
+         a.format || null, a.product_role || null, a.format_note || null]
       );
 
       console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s, ${timeline.length} segments) and added`);
@@ -397,7 +425,7 @@ function startWorker(ai) {
   return worker;
 }
 
-module.exports = { startWorker, buildPrompt, normaliseTimeline };
+module.exports = { startWorker, buildPrompt, normaliseTimeline, RESPONSE_SCHEMA };
 
 // Standalone mode: node worker.js
 if (require.main === module) {
