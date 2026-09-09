@@ -862,6 +862,29 @@ function showCreativeSummary(result) {
   `;
 }
 
+// ---------------------------------------------------------------------
+//  readJson(res)
+//  An expired session redirects to /login, which returns HTML. Calling
+//  res.json() on that gives "Unexpected token '<'", which says nothing
+//  about the real cause. This reads the body once and reports what
+//  actually happened.
+// ---------------------------------------------------------------------
+async function readJson(res) {
+  const text = await res.text();
+  const looksHtml = /^\s*<(?:!doctype|html)/i.test(text);
+  if (looksHtml) {
+    if (res.status === 401 || res.status === 403 || res.redirected || /\/login/.test(res.url || '')) {
+      throw new Error('Your session has expired. Reload the page and sign in again.');
+    }
+    throw new Error(`Server returned a page instead of data (HTTP ${res.status}). The request may have timed out or the server may have restarted.`);
+  }
+  let json;
+  try { json = JSON.parse(text); }
+  catch { throw new Error(`Unreadable response from server (HTTP ${res.status}): ${text.slice(0, 160)}`); }
+  if (!res.ok) throw new Error(json.error || `Request failed (HTTP ${res.status}).`);
+  return json;
+}
+
 async function regenerateDescription() {
   const btn = document.getElementById('ac-regen-btn');
   const orig = btn.innerText;
@@ -873,7 +896,7 @@ async function regenerateDescription() {
       body: JSON.stringify({ creative_id: LAST_CREATIVE_ID }),
       signal: AbortSignal.timeout(120000)
     });
-    const result = await res.json();
+    const result = await readJson(res);
     if (result.error) throw new Error(result.error);
     showCreativeSummary(result);
   } catch (err) {
@@ -1058,7 +1081,7 @@ async function submitCreative(e) {
     });
     clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
 
-    const result = await res.json();
+    const result = await readJson(res);
     if (result.success) {
       // Queued work is confirmed, not watched. A progress bar here would be
       // polling theatre — the analysis takes minutes and the result arrives
