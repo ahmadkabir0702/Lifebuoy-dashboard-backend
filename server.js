@@ -65,6 +65,35 @@ app.options('*', cors({ origin: '*' }));
 
 app.use(requireAuth);
 
+// Role isolation. An influencer coordinator gets exactly one page and the
+// handful of API routes it needs; anything else bounces them back to it.
+// Everyone else never sees that page.
+const COORD_ROLE = 'influencer_coordinator';
+const COORD_API = new Set([
+  '/api/brands', '/api/switch-brand',
+  '/api/others-say-pending', '/api/others-say-stats', '/api/add-creative',
+  '/api/campaigns',
+]);
+app.use((req, res, next) => {
+  const role = req.session && req.session.role;
+  const p = req.path;
+  if (role === COORD_ROLE) {
+    const ok = p === '/coordinator' || p === '/logout'
+      || p.startsWith('/img/') || COORD_API.has(p);
+    if (!ok) {
+      if (p.startsWith('/api/')) return res.status(403).json({ error: 'Not permitted for this role' });
+      return res.redirect('/coordinator');
+    }
+  } else if (p === '/coordinator' || p === '/coordinator.html') {
+    return res.redirect('/');
+  }
+  next();
+});
+
+app.get('/coordinator', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'coordinator.html'));
+});
+
 const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'public', 'login.html'), 'utf8');
 
 app.get('/login', (req, res) => {
