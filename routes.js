@@ -336,7 +336,7 @@ app.get('/api/brands', async (req, res) => {
 
       // Same shape as the worker so a regenerate cannot leave a creative with
       // quartile segments but no timeline.
-      const { buildPrompt, normaliseTimeline } = require('./worker');
+      const { buildPrompt, normaliseTimeline, RESPONSE_SCHEMA } = require('./worker');
       const prompt = buildPrompt(rows[0].duration_s || null);
 
       const result = await ai.models.generateContent({
@@ -345,7 +345,7 @@ app.get('/api/brands', async (req, res) => {
           { fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' } },
           { text: prompt }
         ]}],
-        config: { responseMimeType: 'application/json', maxOutputTokens: 2000 }
+        config: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, maxOutputTokens: 16000 }
       });
 
       const a = JSON.parse(result.text.replace(/```json|```/g, '').trim());
@@ -356,16 +356,23 @@ app.get('/api/brands', async (req, res) => {
         `update creatives
             set content_hook = $2,
                 duration_s = coalesce($3, duration_s),
-                segments = coalesce($4::jsonb, segments)
+                segments = coalesce($4::jsonb, segments),
+                format = coalesce($5, format),
+                product_role = coalesce($6, product_role),
+                format_note = coalesce($7, format_note)
           where creative_id = $1`,
         [creative_id, a.hook || null, safeDur,
          // coalesce: never wipe an existing timeline if this run returned none.
-         (() => { const t = normaliseTimeline(a.timeline); return t.length ? JSON.stringify(t) : null; })()]
+         (() => { const t = normaliseTimeline(a.timeline); return t.length ? JSON.stringify(t) : null; })(),
+         a.format || null, a.product_role || null, a.format_note || null]
       );
 
       res.json({
         success: true, creativeId: creative_id,
         analysis: { hook: a.hook || null,
+                    format: a.format || null,
+                    product_role: a.product_role || null,
+                    format_note: a.format_note || null,
                     segments: [a.seg1, a.seg2, a.seg3, a.seg4],
                     duration: safeDur }
       });
