@@ -459,6 +459,60 @@ function getMetricsHTML(item, titleLabel) {
     </div>`;
 }
 
+
+// ---------------------------------------------------------------------
+//  Structured recommendation rendering
+//  Claude returns discrete fields rather than one blob, so each part is
+//  shown as what it is: a verdict line, what is holding up, what is not,
+//  and the action. Evidence timestamps are listed because a claim that
+//  cannot point at a scene is not worth acting on.
+// ---------------------------------------------------------------------
+const REC_PRIORITY = {
+  high:   { label: 'High priority',   cls: 'rec-chip-high' },
+  medium: { label: 'Medium priority', cls: 'rec-chip-med' },
+  low:    { label: 'Low priority',    cls: 'rec-chip-low' },
+};
+const REC_ACTION = {
+  edit:      'Edit',
+  scale:     'Scale',
+  repurpose: 'Repurpose',
+  monitor:   'Monitor',
+};
+
+function recChipsHTML(r) {
+  const out = [];
+  const p = REC_PRIORITY[r.priority];
+  if (p) out.push(`<span class="rec-chip ${p.cls}">${p.label}</span>`);
+  if (REC_ACTION[r.actionType]) out.push(`<span class="rec-chip rec-chip-type">${REC_ACTION[r.actionType]}</span>`);
+  if (r.confidence === 'low') out.push(`<span class="rec-chip rec-chip-low-conf" title="The model flagged this call as uncertain">Low confidence</span>`);
+  return out.length ? `<div class="rec-chips">${out.join('')}</div>` : '';
+}
+
+function recStructuredHTML(r) {
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const part = (label, text, cls) => text
+    ? `<div class="rec-part ${cls}"><div class="rec-part-label">${label}</div><div class="rec-part-text">${esc(text)}</div></div>`
+    : '';
+  const ev = Array.isArray(r.evidence) && r.evidence.length
+    ? `<div class="rec-evidence"><span class="rec-part-label">Based on</span>${
+        r.evidence.map(e => `<span class="rec-ts" title="${esc(e.why)}">${fmtTs(e.t)}</span>`).join('')
+      }</div>`
+    : '';
+  return `
+    ${r.verdict ? `<div class="rec-verdict">${esc(r.verdict)}</div>` : ''}
+    ${part('Working', r.working, 'rec-good')}
+    ${part('Not working', r.notWorking, 'rec-bad')}
+    ${part('Do this', r.action, 'rec-action')}
+    ${ev}`;
+}
+
+function fmtTs(t) {
+  const n = Number(t);
+  if (!Number.isFinite(n)) return String(t);
+  const m = Math.floor(n / 60), s = Math.round(n % 60);
+  return m ? `${m}:${String(s).padStart(2,'0')}` : `${s}s`;
+}
+
 function getRecHTML(item, titleLabel) {
   if (!item) return '';
   if (item.recommendation) {
@@ -470,7 +524,13 @@ function getRecHTML(item, titleLabel) {
     const actionBadge = isActioned
       ? `<div class="sheet-rec-action">Actioned by ${item.actionBy||'Unknown'} on ${item.actionDate||'Date unknown'} (${item.agency||'Agency unassigned'})</div>`
       : `<div class="sheet-rec-action" style="color:#8A5A12">Pending action (${item.agency||'Agency unassigned'}) ${canAssignAgency ? `<button class="action-btn" onclick="openActionModal('${item.id}', '${titleLabel}')">Mark Actioned</button>` : ''}</div>`;
-    return `<div class="sheet-rec"><div class="sheet-rec-content"><div class="sheet-rec-label">${titleLabel} Live Recommendation</div><div class="sheet-rec-text">${item.recommendation}</div>${actionBadge}</div></div>`;
+    // Structured recommendations render as parts. Rows written before the
+    // structured schema have no .rec and fall back to the original blob.
+    const r = item.rec;
+    const body = r ? recStructuredHTML(r)
+                   : `<div class="sheet-rec-text">${item.recommendation}</div>`;
+    const chips = r ? recChipsHTML(r) : '';
+    return `<div class="sheet-rec"><div class="sheet-rec-content"><div class="sheet-rec-head"><div class="sheet-rec-label">${titleLabel} Live Recommendation</div>${chips}</div>${body}${actionBadge}</div></div>`;
   } else {
     return `<div class="sheet-rec" style="opacity:0.6;border-color:var(--c-border);background:var(--c-surface);"><div class="sheet-rec-content"><div class="sheet-rec-label" style="color:var(--c-muted);">${titleLabel} Live Recommendation</div><div class="sheet-rec-text" style="color:var(--c-muted);">No recommendation provided.</div></div></div>`;
   }
