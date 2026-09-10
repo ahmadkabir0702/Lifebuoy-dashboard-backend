@@ -264,7 +264,28 @@ app.get('/api/brands', async (req, res) => {
   // -------------------------------------------------------------------
   //  ADD CREATIVE — writes to `creatives`, then Gemini fills the rest
   // -------------------------------------------------------------------
+  // Who is adding this, and where their notification should go. Falls back to
+  // the username alone when the account has no address on file; the fixed
+  // NOTIFY_TO list still receives everything either way.
+  async function resolveAdder(req) {
+    const username = (req.session && req.session.user) || null;
+    if (!username) return { username: null, displayName: null, email: null };
+    try {
+      const { rows } = await query(
+        'select display_name, email from app_users where username = $1', [username]);
+      return {
+        username,
+        displayName: (rows[0] && rows[0].display_name) || username,
+        email: (rows[0] && rows[0].email) || null,
+      };
+    } catch (err) {
+      console.error('[add-creative] could not resolve adder:', err.message);
+      return { username, displayName: username, email: null };
+    }
+  }
+
  app.post('/api/add-creative', async (req, res) => {
+    const adder = await resolveAdder(req);
     const { campaign, type, date, ig, fb, tt, repurposed, originalId, creator } = req.body;
     let brand;
     try { brand = resolveBrand(req); }
@@ -299,9 +320,18 @@ app.get('/api/brands', async (req, res) => {
             mediaUrl: videoLink,
             platform: videoLink.includes('instagram.com') ? 'instagram'
                     : videoLink.includes('tiktok.com') ? 'tiktok' : 'facebook',
-            addedBy: (req.session && req.session.user && req.session.user.username) || null,
+            // req.session.user is the username string, not an object — the
+            // previous .username read here was always undefined, which is why
+            // "Added by" never appeared in the notification.
+            addedBy: adder.username,
+            addedByName: adder.displayName,
+            addedByEmail: adder.email,
           },
-          { attempts: 3, backoff: { type: 'exponential', delay: 15000 },
+          // 60s base gives roughly 1, 2 and 4 minute gaps. The previous 15s
+          // base retried inside 105 seconds, which was not long enough to ride
+          // out a Gemini-side hiccup: all three attempts failed and the same
+          // video then processed fine on a manual retry minutes later.
+          { attempts: 3, backoff: { type: 'exponential', delay: 60000 },
             removeOnComplete: 100, removeOnFail: 500 }
         );
         // The id is deliberately not returned here. It only becomes real when
