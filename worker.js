@@ -198,7 +198,14 @@ async function analyseVideo(ai, videoPath, hintDuration) {
       await new Promise(r => setTimeout(r, 3000));
       state = await ai.files.get({ name: geminiFile.name });
     }
-    if (state.state === 'FAILED') throw new Error('Gemini processing failed.');
+    if (state.state === 'FAILED') {
+      // Gemini returns a reason on the file object. Without it every failure
+      // reads the same in the notification, so a transient backend wobble is
+      // indistinguishable from an unsupported codec.
+      const e = state.error || {};
+      const why = e.message || e.reason || (Object.keys(e).length ? JSON.stringify(e) : 'no reason given');
+      throw new Error(`Gemini processing failed: ${why}`);
+    }
 
     const result = await ai.models.generateContent({
       model: GEMINI_MODEL,
@@ -384,7 +391,8 @@ function makeProcessor(ai) {
 
       notifySuccess({
         creativeId, brand: d.brand, campaign: d.campaign, platform,
-        duration: safeDur, hook: a.hook, addedBy: d.addedBy,
+        duration: safeDur, hook: a.hook,
+        addedBy: d.addedBy, addedByName: d.addedByName, addedByEmail: d.addedByEmail,
       }).catch(e => console.error('[worker] notify:', e.message));
       return {
         status: 'completed', creativeId, platform,
@@ -433,6 +441,7 @@ function startWorker(ai) {
         creativeId: job.data.creativeId, brand: job.data.brand,
         campaign: job.data.campaign, link: job.data.mediaUrl,
         error: err.message, attempts,
+        addedByName: job.data.addedByName, addedByEmail: job.data.addedByEmail,
       }).catch(e => console.error('[worker] notify:', e.message));
     }
   });
