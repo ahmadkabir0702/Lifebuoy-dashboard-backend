@@ -428,6 +428,18 @@ function startWorker(ai) {
   const worker = new Worker('creative-downloads', makeProcessor(ai), {
     connection,
     concurrency: Number(process.env.WORKER_CONCURRENCY || 2),
+    // A deploy kills the process mid-job. Without these, BullMQ treats the
+    // silence as a failed attempt and burns a retry on a job that was never
+    // actually broken. lockDuration must exceed the longest analysis; a
+    // 5-minute Gemini wait plus download and upload fits inside 10.
+    lockDuration: 10 * 60 * 1000,
+    stalledInterval: 30 * 1000,
+    maxStalledCount: 3,
+  });
+
+  // A job whose worker vanished is not a real failure: it never got to run.
+  worker.on('stalled', (jobId) => {
+    console.warn(`[worker] job ${jobId} stalled (worker restarted mid-job) — requeueing`);
   });
 
   worker.on('failed', (job, err) => {
@@ -447,8 +459,35 @@ function startWorker(ai) {
   });
   worker.on('completed', job => console.log(`[worker] job ${job.id} completed`));
 
+  attachShutdown(worker, connection);
+
   console.log('[worker] active and listening for background download tasks');
   return worker;
+}
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+// Render sends SIGTERM on every deploy and waits ~30s before SIGKILL. Without
+// a handler the process dies mid-job, the analysis is lost, and the attempt is
+// counted against the job's retries. worker.close() stops taking new work and
+// waits for what is already running, so a deploy during a batch costs a short
+// wait instead of failed creatives.
+function attachShutdown(worker, connection) {
+  let closing = false;
+  const shutdown = async (signal) => {
+    if (closing) return;
+    closing = true;
+    console.log(`[worker] ${signal} received — finishing in-flight jobs, no new ones accepted`);
+    try {
+      await worker.close();            // waits for active jobs
+      console.log('[worker] all in-flight jobs finished');
+    } catch (e) {
+      console.error('[worker] shutdown error:', e.message);
+    }
+    try { await connection.quit(); } catch (e) { /* redis already gone */ }
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
 }
 
 module.exports = { startWorker, buildPrompt, normaliseTimeline, RESPONSE_SCHEMA };
