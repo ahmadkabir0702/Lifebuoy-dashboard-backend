@@ -83,16 +83,22 @@ module.exports = function mountRoutes(app, deps = {}) {
   app.get('/api/campaigns', async (req, res) => {
     try {
       const brand = resolveBrand(req);
+      // id is needed so creators can be scoped to a campaign. Legacy campaign
+      // names that only exist on creatives come back with a null id and simply
+      // have no creators assigned.
       const { rows } = await query(
-        `select name from campaigns
-          where brand_id = $1 and is_active = true
+        `select c.id, c.name from campaigns c
+          where c.brand_id = $1 and c.is_active = true
          union
-         select distinct campaign from creatives
-          where brand_id = $1 and campaign is not null and campaign <> ''
+         select null::bigint as id, x.campaign as name
+           from (select distinct campaign from creatives
+                  where brand_id = $1 and campaign is not null and campaign <> '') x
+          where not exists (select 1 from campaigns c2
+                             where c2.brand_id = $1 and c2.name = x.campaign)
          order by name`,
         [brand]
       );
-      res.json(rows.map(r => r.name));
+      res.json(rows);
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
     }
@@ -113,6 +119,107 @@ module.exports = function mountRoutes(app, deps = {}) {
         [brand, name]
       );
       res.json({ success: true, name });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  // -------------------------------------------------------------------
+  //  Creators
+  //  A creator is a real row rather than free text on a creative, so the
+  //  same person can be assigned to several campaigns and still roll up to
+  //  one set of overall numbers.
+  // -------------------------------------------------------------------
+
+  // Creators assigned to a campaign, for the coordinator's picker.
+  // Without campaign_id it returns every active creator, which is what the
+  // admin list needs.
+  app.get('/api/creators', async (req, res) => {
+    try {
+      resolveBrand(req);            // brand access check
+      const campaignId = req.query.campaign_id;
+      const params = [];
+      let sql = `select c.id, c.name,
+                        coalesce(json_agg(json_build_object(
+                          'platform', p.platform, 'handle', p.handle, 'url', p.profile_url)
+                        ) filter (where p.platform is not null), '[]') as profiles
+                   from creators c
+                   left join creator_profiles p on p.creator_id = c.id`;
+      if (campaignId) {
+        params.push(campaignId);
+        sql += `\n  join campaign_creators cc on cc.creator_id = c.id and cc.campaign_id = $1`;
+      }
+      sql += `\n where c.is_active = true
+                group by c.id, c.name
+                order by c.name`;
+      const { rows } = await query(sql, params);
+      res.json(rows);
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  // Create or update a creator and their platform profiles.
+  app.post('/api/creators', async (req, res) => {
+    try {
+      resolveBrand(req);
+      if (req.session.role === 'influencer_coordinator') {
+        return res.status(403).json({ error: 'Not permitted for this role' });
+      }
+      const name = (req.body.name || '').trim();
+      if (!name) return res.status(400).json({ error: 'Creator name is required.' });
+
+      const { rows } = await query(
+        `insert into creators (name) values ($1)
+         on conflict (lower(name)) do update set is_active = true
+         returning id`, [name]);
+      const id = rows[0].id;
+
+      // profiles: [{ platform, handle, url }]
+      for (const p of (req.body.profiles || [])) {
+        if (!p || !['ig','fb','tt','yt','other'].includes(p.platform)) continue;
+        await query(
+          `insert into creator_profiles (creator_id, platform, handle, profile_url)
+           values ($1,$2,$3,$4)
+           on conflict (creator_id, platform) do update
+             set handle = excluded.handle, profile_url = excluded.profile_url`,
+          [id, p.platform, p.handle || null, p.url || null]);
+      }
+      res.json({ success: true, id, name });
+    } catch (err) {
+      res.status(err.status || 500).json({ error: err.message });
+    }
+  });
+
+  // Assign or unassign creators on a campaign.
+  app.post('/api/campaign-creators', async (req, res) => {
+    try {
+      const brand = resolveBrand(req);
+      if (req.session.role === 'influencer_coordinator') {
+        return res.status(403).json({ error: 'Not permitted for this role' });
+      }
+      const { campaign_id, creator_ids, remove } = req.body;
+      if (!campaign_id) return res.status(400).json({ error: 'campaign_id is required.' });
+
+      // the campaign must belong to a brand this user can see
+      const { rows: own } = await query(
+        'select 1 from campaigns where id = $1 and brand_id = $2', [campaign_id, brand]);
+      if (!own.length) return res.status(403).json({ error: 'Campaign not found for this brand.' });
+
+      const ids = [].concat(creator_ids || []).filter(Boolean);
+      if (!ids.length) return res.status(400).json({ error: 'creator_ids is required.' });
+
+      if (remove) {
+        await query(
+          'delete from campaign_creators where campaign_id = $1 and creator_id = any($2::bigint[])',
+          [campaign_id, ids]);
+      } else {
+        await query(
+          `insert into campaign_creators (campaign_id, creator_id)
+           select $1, unnest($2::bigint[])
+           on conflict do nothing`, [campaign_id, ids]);
+      }
+      res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
     }
@@ -286,7 +393,7 @@ app.get('/api/brands', async (req, res) => {
 
  app.post('/api/add-creative', async (req, res) => {
     const adder = await resolveAdder(req);
-    const { campaign, type, date, ig, fb, tt, repurposed, originalId, creator } = req.body;
+    const { campaign, type, date, ig, fb, tt, repurposed, originalId, creator, creator_id } = req.body;
     let brand;
     try { brand = resolveBrand(req); }
     catch (err) { return res.status(403).json({ error: err.message }); }
@@ -317,6 +424,7 @@ app.get('/api/brands', async (req, res) => {
             repurposed: repurposed === 'Yes', originalId: originalId || null,
             ig: ig || null, fb: fb || null, tt: tt || null,
             creator: creator || null,
+            creatorId: creator_id || null,
             mediaUrl: videoLink,
             platform: videoLink.includes('instagram.com') ? 'instagram'
                     : videoLink.includes('tiktok.com') ? 'tiktok' : 'facebook',
@@ -353,10 +461,12 @@ app.get('/api/brands', async (req, res) => {
       await query(
         `insert into creatives
            (creative_id, brand_id, date, campaign, type, is_repurposed,
-            original_creative_id, content_type, ig_link, fb_link, tt_link, creator_profile)
-         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',$8,$9,$10,$11)`,
+            original_creative_id, content_type, ig_link, fb_link, tt_link,
+            creator_profile, creator_id)
+         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',$8,$9,$10,$11,$12)`,
         [creativeId, brand, date || null, campaign, type, repurposed === 'Yes',
-         originalId || null, ig || null, fb || null, tt || null, creator || null]
+         originalId || null, ig || null, fb || null, tt || null,
+         creator || null, creator_id || null]
       );
       return res.json({
         success: true, creativeId, queued: false,
