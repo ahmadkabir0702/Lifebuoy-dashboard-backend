@@ -94,8 +94,22 @@ app.use((req, res, next) => {
 // Served from views/, not public/. The static handler cannot reach it, so the
 // only way to this page is through this route, which is behind requireAuth
 // and the role check below.
-const COORDINATOR_HTML = fs.readFileSync(path.join(__dirname, 'views', 'coordinator.html'), 'utf8');
+// Read at boot so the page is served from memory, but never fatally: this
+// runs at module load, so an unreadable file here would stop the whole app
+// from starting rather than just breaking one page.
+const COORDINATOR_HTML = (() => {
+  for (const p of [path.join(__dirname, 'views', 'coordinator.html'),
+                   path.join(__dirname, 'coordinator.html')]) {
+    try { return fs.readFileSync(p, 'utf8'); } catch (e) { /* try the next */ }
+  }
+  console.error('[server] coordinator.html not found in views/ or repo root — /coordinator will 503');
+  return null;
+})();
+
 app.get('/coordinator', (req, res) => {
+  if (!COORDINATOR_HTML) {
+    return res.status(503).send('Coordinator page is not installed on this deploy.');
+  }
   if (!req.session || req.session.role !== COORD_ROLE) return res.redirect('/');
   res.type('html').send(COORDINATOR_HTML);
 });
