@@ -63,6 +63,17 @@
   .tab { padding: 7px 14px; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; font-weight: 500; }
   .tab.on { background: var(--ink-900); color: #fff; border-color: var(--ink-900); }
   .tab.off { opacity: .45; }
+  .cbx-wrap { position: relative; }
+  .cbx-list { position: absolute; z-index: 20; left: 0; right: 0; top: 100%; margin-top: 4px;
+              background: #fff; border: 1px solid var(--line); border-radius: 8px;
+              box-shadow: 0 8px 24px rgba(26,26,79,.10); max-height: 260px; overflow-y: auto;
+              display: none; }
+  .cbx-list.show { display: block; }
+  .cbx-opt { padding: 9px 12px; cursor: pointer; font-size: 13px; }
+  .cbx-opt:hover, .cbx-opt.active { background: var(--bg); }
+  .cbx-opt .cbx-name { font-weight: 500; }
+  .cbx-opt .cbx-plats { font-size: 11px; color: var(--ink-500); margin-top: 2px; }
+  .cbx-empty { padding: 12px; font-size: 13px; color: var(--ink-500); }
   .plats-form { margin-top: 14px; display: grid; gap: 10px; }
   .plat-row { display: flex; align-items: center; gap: 12px; }
   .plat-row .plat-name { width: 84px; flex: none; font-size: 13px; color: var(--ink-700); }
@@ -106,7 +117,12 @@
   <section class="card">
     <h2>Add influencer content</h2>
     <div class="grid">
-      <div><label>Creator name</label><input id="f_creator" placeholder="e.g. Shanudrie"></div>
+      <div class="cbx-wrap">
+        <label>Creator</label>
+        <input id="f_creator" autocomplete="off" placeholder="Pick a campaign first" disabled>
+        <div id="creatorList" class="cbx-list"></div>
+        <input type="hidden" id="f_creator_id">
+      </div>
       <div><label>Campaign</label><select id="f_campaign"><option value="" disabled selected>Select campaign</option></select></div>
       <div><label>Date posted</label><input id="f_date" type="date"></div>
     </div>
@@ -197,14 +213,105 @@ async function loadCampaigns() {
   sel.innerHTML = '<option value="" disabled selected>Select campaign</option>';
   try {
     const list = await fetch('/api/campaigns?brand=' + encodeURIComponent(BRAND)).then(r => r.json());
-    (Array.isArray(list) ? list : []).forEach(n => {
-      const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+    (Array.isArray(list) ? list : []).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.name;                       // the creative stores the name
+      o.dataset.id = c.id == null ? '' : c.id; // the id scopes the creator list
+      o.textContent = c.name;
+      sel.appendChild(o);
     });
     if (!list.length) sel.innerHTML = '<option value="" disabled selected>No campaigns set up for this brand</option>';
   } catch (e) {
     sel.innerHTML = '<option value="" disabled selected>Could not load campaigns</option>';
   }
 }
+
+// ── creator picker ────────────────────────────────────────────────────────
+// Creators are scoped to the campaign, so the campaign must be chosen first.
+// The list is a filtered combobox rather than a plain select: with a few
+// hundred creators a native dropdown is unusable without search.
+let CREATORS = [], CREATOR_IDX = -1;
+
+$('f_campaign').addEventListener('change', loadCreators);
+
+async function loadCreators() {
+  const opt = $('f_campaign').selectedOptions[0];
+  const campaignId = opt ? opt.dataset.id : '';
+  const inp = $('f_creator');
+  CREATORS = []; $('f_creator_id').value = ''; inp.value = '';
+
+  if (!campaignId) {
+    inp.disabled = true;
+    inp.placeholder = 'No creators are assigned to this campaign';
+    return;
+  }
+  inp.disabled = false; inp.placeholder = 'Loading creators…';
+  try {
+    CREATORS = await fetch('/api/creators?brand=' + encodeURIComponent(BRAND) +
+                           '&campaign_id=' + encodeURIComponent(campaignId)).then(r => r.json());
+    inp.placeholder = CREATORS.length
+      ? `Search ${CREATORS.length} creator${CREATORS.length > 1 ? 's' : ''}…`
+      : 'No creators are assigned to this campaign';
+    inp.disabled = !CREATORS.length;
+  } catch (e) {
+    inp.disabled = true; inp.placeholder = 'Could not load creators';
+  }
+}
+
+const PLAT_SHORT = { ig: 'Instagram', fb: 'Facebook', tt: 'TikTok', yt: 'YouTube', other: 'Other' };
+
+function renderCreatorList(filter) {
+  const box = $('creatorList');
+  const q = (filter || '').trim().toLowerCase();
+  const hits = q ? CREATORS.filter(c => c.name.toLowerCase().includes(q)) : CREATORS;
+  if (!hits.length) {
+    box.innerHTML = `<div class="cbx-empty">${q ? 'No creator matches that name.' : 'No creators assigned.'}</div>`;
+  } else {
+    box.innerHTML = hits.map((c, i) => {
+      const plats = (c.profiles || []).map(p => PLAT_SHORT[p.platform] || p.platform).join(' · ');
+      return `<div class="cbx-opt${i === CREATOR_IDX ? ' active' : ''}" data-id="${c.id}" data-name="${esc(c.name)}">
+                <div class="cbx-name">${esc(c.name)}</div>
+                ${plats ? `<div class="cbx-plats">${esc(plats)}</div>` : ''}
+              </div>`;
+    }).join('');
+    [...box.querySelectorAll('.cbx-opt')].forEach(el => {
+      el.onmousedown = ev => {            // mousedown: fires before blur
+        ev.preventDefault();
+        pickCreator(el.dataset.id, el.dataset.name);
+      };
+    });
+  }
+  box.classList.add('show');
+}
+
+function pickCreator(id, name) {
+  $('f_creator_id').value = id;
+  $('f_creator').value = name;
+  $('creatorList').classList.remove('show');
+  CREATOR_IDX = -1;
+}
+
+$('f_creator').addEventListener('input', e => {
+  $('f_creator_id').value = '';   // typing invalidates the previous pick
+  CREATOR_IDX = -1;
+  renderCreatorList(e.target.value);
+});
+$('f_creator').addEventListener('focus', e => { if (CREATORS.length) renderCreatorList(e.target.value); });
+$('f_creator').addEventListener('blur', () => setTimeout(() => $('creatorList').classList.remove('show'), 120));
+$('f_creator').addEventListener('keydown', e => {
+  const opts = [...$('creatorList').querySelectorAll('.cbx-opt')];
+  if (!opts.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); CREATOR_IDX = Math.min(CREATOR_IDX + 1, opts.length - 1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); CREATOR_IDX = Math.max(CREATOR_IDX - 1, 0); }
+  else if (e.key === 'Enter' && CREATOR_IDX >= 0) {
+    e.preventDefault();
+    const el = opts[CREATOR_IDX];
+    return pickCreator(el.dataset.id, el.dataset.name);
+  } else if (e.key === 'Escape') { return $('creatorList').classList.remove('show'); }
+  else return;
+  opts.forEach((o, i) => o.classList.toggle('active', i === CREATOR_IDX));
+  opts[CREATOR_IDX].scrollIntoView({ block: 'nearest' });
+});
 
 // ── list ──────────────────────────────────────────────────────────────────
 function status(c) {
@@ -284,6 +391,7 @@ function readForm() {
   });
   return {
     creator: $('f_creator').value.trim(),
+    creatorId: $('f_creator_id').value || null,
     campaign: $('f_campaign').value,
     date: $('f_date').value || null,
     plats,
@@ -291,8 +399,8 @@ function readForm() {
 }
 
 function validate(f) {
-  if (!f.creator) return 'Creator name is required.';
   if (!f.campaign) return 'Select a campaign.';
+  if (!f.creatorId) return 'Pick a creator from the list. If they are missing, they need assigning to this campaign first.';
   if (!f.date) return 'Date posted is required.';
   if (!PLATS.some(p => f.plats[p.k].on)) return 'Turn on at least one platform. Content with no links cannot have stats.';
   for (const p of PLATS) {
@@ -345,7 +453,8 @@ $('addBtn').onclick = async () => {
 
   const body = {
     brand_id: BRAND, type: 'Others Say',
-    creator: f.creator, campaign: f.campaign, date: f.date,
+    creator: f.creator, creator_id: f.creatorId,
+    campaign: f.campaign, date: f.date,
     ig: f.plats.ig.on ? f.plats.ig.link : null,
     fb: f.plats.fb.on ? f.plats.fb.link : null,
     tt: f.plats.tt.on ? f.plats.tt.link : null,
@@ -359,8 +468,9 @@ $('addBtn').onclick = async () => {
     m.textContent = j.queued
       ? 'Queued. The video is being analysed; it will appear below in a few minutes. Stats are due within 48 hours of now.'
       : 'Added. Stats are due within 48 hours of now.';
-    ['f_creator', 'f_date', 'f_ig', 'f_fb', 'f_tt'].forEach(id => $(id).value = '');
+    ['f_creator', 'f_creator_id', 'f_date', 'f_ig', 'f_fb', 'f_tt'].forEach(id => $(id).value = '');
     $('f_campaign').selectedIndex = 0;
+    loadCreators();
     PLATS.forEach(p => { $('f_' + p.k + '_on').checked = false; });
     syncPlatFields();
     setEditMode();
