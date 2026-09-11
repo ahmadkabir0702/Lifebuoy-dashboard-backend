@@ -74,24 +74,30 @@ const COORD_API = new Set([
   '/api/others-say-pending', '/api/others-say-stats', '/api/add-creative',
   '/api/campaigns',
 ]);
+// Deny by default: a coordinator may reach their own page, the assets it
+// needs, and the allowlisted APIs. Everything else bounces. Nothing here
+// depends on remembering to name a new page, so adding pages elsewhere in
+// the app cannot accidentally expose them to this role.
+const COORD_ASSET_RE = /^\/(img|fonts)\//;
 app.use((req, res, next) => {
   const role = req.session && req.session.role;
   const p = req.path;
-  if (role === COORD_ROLE) {
-    const ok = p === '/coordinator' || p === '/logout'
-      || p.startsWith('/img/') || COORD_API.has(p);
-    if (!ok) {
-      if (p.startsWith('/api/')) return res.status(403).json({ error: 'Not permitted for this role' });
-      return res.redirect('/coordinator');
-    }
-  } else if (p === '/coordinator' || p === '/coordinator.html') {
-    return res.redirect('/');
-  }
-  next();
+  if (role !== COORD_ROLE) return next();
+
+  const ok = p === '/coordinator' || p === '/logout'
+    || COORD_ASSET_RE.test(p) || COORD_API.has(p);
+  if (ok) return next();
+  if (p.startsWith('/api/')) return res.status(403).json({ error: 'Not permitted for this role' });
+  return res.redirect('/coordinator');
 });
 
+// Served from views/, not public/. The static handler cannot reach it, so the
+// only way to this page is through this route, which is behind requireAuth
+// and the role check below.
+const COORDINATOR_HTML = fs.readFileSync(path.join(__dirname, 'views', 'coordinator.html'), 'utf8');
 app.get('/coordinator', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'coordinator.html'));
+  if (!req.session || req.session.role !== COORD_ROLE) return res.redirect('/');
+  res.type('html').send(COORDINATOR_HTML);
 });
 
 const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'public', 'login.html'), 'utf8');
@@ -169,6 +175,22 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server listening on port ${PORT}`);
 });
+
+// Render sends SIGTERM on every deploy. The queue worker runs inside this
+// process, so a hard exit kills any analysis in flight and burns one of its
+// retries. Stop accepting new HTTP connections first, then let worker.js's
+// own handler drain the jobs it already has. Render allows ~30s before
+// SIGKILL; anything still running past that is picked up as a stalled job
+// and retried by the next instance rather than lost.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[server] ${signal} — closing HTTP listener, draining in-flight work`);
+    server.close(() => console.log('[server] HTTP listener closed'));
+  });
+}
