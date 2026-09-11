@@ -22,6 +22,10 @@ const { buildPrompt, normaliseTimeline, RESPONSE_SCHEMA } = require('./worker');
 // pulled for new users — so it is an env var, changeable without a deploy.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
+// Max characters of the optional description that get folded into the
+// creative_id. Kept short because the id is typed by hand into ad names.
+const DESCRIPTION_MAX = 20;
+
 
 module.exports = function mountRoutes(app, deps = {}) {
   const { ai, youtubedl } = deps;
@@ -393,7 +397,7 @@ app.get('/api/brands', async (req, res) => {
 
  app.post('/api/add-creative', async (req, res) => {
     const adder = await resolveAdder(req);
-    const { campaign, type, date, ig, fb, tt, repurposed, originalId, creator, creator_id } = req.body;
+    const { campaign, type, date, ig, fb, tt, repurposed, originalId, creator, creator_id, description } = req.body;
     let brand;
     try { brand = resolveBrand(req); }
     catch (err) { return res.status(403).json({ error: err.message }); }
@@ -404,10 +408,33 @@ app.get('/api/brands', async (req, res) => {
     if (!campaign) return res.status(400).json({ error: 'Campaign is required.' });
 
     // The creative_id is typed by hand into ad names after the pipe, so it has
-    // to be short. Brand + type + a 6-char base36 stamp.
+    // to be short and ideally readable. A description gives BRAND_BS_SHANUDRIE
+    // instead of BRAND_BS_VNYW8R; without one it falls back to the stamp.
+    //
+    // The stamp is Date.now() in base36, last 6 chars. Six base36 characters
+    // only span 25 days before the values repeat, so the stamp alone is not a
+    // safe unique key over time — every id is checked against the table below
+    // and disambiguated if it is already taken.
     const typeCode = type === 'Brand Say' ? 'BS' : 'OS';
-    const stamp = Date.now().toString(36).slice(-6).toUpperCase();
-    const creativeId = `${brand.toUpperCase()}_${typeCode}_${stamp}`;
+    const stamp = () => Date.now().toString(36).slice(-6).toUpperCase();
+    const prefix = `${brand.toUpperCase()}_${typeCode}`;
+
+    const slug = String(description || '')
+      .toUpperCase()
+      .replace(/&/g, 'AND')
+      .replace(/[^A-Z0-9]+/g, '')
+      .slice(0, DESCRIPTION_MAX);
+
+    let creativeId = slug ? `${prefix}_${slug}` : `${prefix}_${stamp()}`;
+
+    // Guarantee uniqueness: two "Shanudrie" cuts, or a stamp that wrapped.
+    for (let i = 0; i < 5; i++) {
+      const { rows: clash } = await query(
+        'select 1 from creatives where creative_id = $1', [creativeId]);
+      if (!clash.length) break;
+      creativeId = slug ? `${prefix}_${slug}_${stamp()}` : `${prefix}_${stamp()}`;
+      if (i > 0) creativeId += String(i + 1);
+    }
 
     const videoLink = ig || tt || fb;
     const queue = app.get('mediaQueue');
