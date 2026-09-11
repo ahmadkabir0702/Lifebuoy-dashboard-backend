@@ -1,502 +1,210 @@
-/**
- * worker.js — background creative processor
- *
- * Does everything /api/add-creative used to do inline, minus the initial row
- * insert (which stays in the route so the creative appears immediately):
- *
- *   1. resolve a CDN link via RapidAPI
- *   2. stream the mp4 to a temp file
- *   3. upload to Gemini, wait for processing
- *   4. ask for hook + a fixed-interval timeline + duration
- *   5. write the analysis back to `creatives`
- *
- * Runs two ways, same code:
- *   - in-process, started from server.js (default — no extra Render service)
- *   - standalone, `node worker.js`, when you want a dedicated service
- *
- * At ~17 videos a day the in-process worker is free and sufficient. Splitting
- * it out later is a start command, not a rewrite.
- */
-const fs = require('fs');
-const os = require('os');
+const express = require('express');
+const cors = require('cors');
 const path = require('path');
-const axios = require('axios');
-const { Worker } = require('bullmq');
-const IORedis = require('ioredis');
+const fs = require('fs');
+const youtubedl = require('youtube-dl-exec');
+const os = require('os'); // <--- ADD THIS
+const { GoogleGenAI } = require('@google/genai');
+const session = require('express-session');
 const { query } = require('./db');
-const { notifySuccess, notifyFailure } = require('./notify');
 
-// Gemini model. Google retires these on their own schedule — 2.5-flash was
-// pulled for new users — so it is an env var, changeable without a deploy.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const app = express();
+app.use(cors({ origin: '*' }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Cost levers, all env-tunable so they can be tried without a deploy.
-//   GEMINI_THINKING_BUDGET  thinking tokens bill at OUTPUT rates. Describing
-//                           what is on screen needs little reasoning, so a low
-//                           budget is cheaper and faster. -1 = model default,
-//                           0 = off where the model allows it.
-//   GEMINI_MEDIA_RESOLUTION video input is ~60% of the cost. 'low' cuts it
-//                           substantially; the trade is small on-screen text.
-const THINKING_BUDGET = process.env.GEMINI_THINKING_BUDGET === undefined
-  ? null : Number(process.env.GEMINI_THINKING_BUDGET);
-const MEDIA_RESOLUTION = process.env.GEMINI_MEDIA_RESOLUTION || null;
-
-const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST
-  || 'instagram-tiktok-youtube-downloader.p.rapidapi.com';
-
-// Segment granularity. Fixed intervals, not scene changes: retention data is
-// time-indexed, so to say "hold rate collapses at 6s and here is what was on
-// screen at 6s" the descriptions have to sit on the same time grid.
-const SEG_SECONDS = Number(process.env.SEGMENT_SECONDS || 2);
-const MAX_SEGMENTS = Number(process.env.MAX_SEGMENTS || 60);
-
-/**
- * Widen the interval rather than truncating long videos. A 149s video at 2s
- * needs 75 windows; capping at 60 described only the first 120s and left the
- * last 29 unanalysed. Stepping to 3s covers the whole thing in 50 windows,
- * which also keeps output tokens — and the model's tendency to give up on
- * long lists — under control.
- */
-function stepFor(duration) {
-  if (!duration || duration <= 0) return SEG_SECONDS;
-  let step = SEG_SECONDS;
-  while (Math.ceil(duration / step) > MAX_SEGMENTS) step += 1;
-  return step;
-}
-
-// Structured output. responseMimeType alone asks for JSON without saying what
-// shape; a schema constrains it, which is what stops the model returning an
-// object where an array is expected or renaming keys.
-const RESPONSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    duration: { type: 'number' },
-    format: {
-      type: 'string',
-      enum: ['music_video', 'product_demo', 'talking_head', 'testimonial',
-             'lifestyle', 'tutorial', 'ugc', 'animation', 'other'],
-    },
-    product_role: { type: 'string', enum: ['hero', 'featured', 'incidental', 'absent'] },
-    format_note: { type: 'string' },
-    hook: { type: 'string' },
-    timeline: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          t: { type: 'number' },
-          d: { type: 'string' },
-        },
-        required: ['t', 'd'],
-      },
-    },
-  },
-  required: ['duration', 'format', 'product_role', 'format_note', 'hook', 'timeline'],
-  propertyOrdering: ['duration', 'format', 'product_role', 'format_note', 'hook', 'timeline'],
-};
-
-function buildPrompt(hintDuration) {
-  const dur = hintDuration && hintDuration > 0 ? hintDuration : null;
-  const step = stepFor(dur);
-  const n = dur ? Math.ceil(dur / step) : null;
-
-  return `Watch this video carefully and describe it on a fixed time grid.
-
-Return ONE JSON object with these keys:
-
-"duration": the exact length of the video in seconds (number).
-
-"format": what kind of video this is. Exactly one of:
-  "music_video" — a song is the primary content and someone performs it on screen or as the audio.
-  "product_demo" — the product and how it is used or what it does is the main subject.
-  "talking_head" — a person addresses the camera directly for most of the runtime.
-  "testimonial" — a person recounts their own experience with the product.
-  "lifestyle" — mood, scenery and daily-life moments; the product is incidental to the scene.
-  "tutorial" — the video teaches steps, a routine or a how-to.
-  "ugc" — casual, handheld, creator-style footage.
-  "animation" — animated or motion graphics with no live footage.
-  "other" — none of the above fit.
-
-"product_role": how present the product is. Exactly one of "hero" (the product is the main subject and on screen most of the time), "featured" (it has a clear moment but is not the subject throughout), "incidental" (it appears briefly or as a prop), "absent" (it never appears on screen).
-
-"format_note": one sentence explaining the classification, naming who is on screen and what they are doing in relation to the brand. Example: "Original song performed by the artist on screen; the lotion appears as a prop in the closing scene." If someone sings, say so here and do not describe the singing as speech.
-
-"hook": 1-2 sentences describing the opening hook — what grabs attention in the first two seconds.
-
-"timeline": an array of ${n ? `exactly ${n}` : ''} objects, one per ${step}-second window, covering the whole video from 0 to the end with no gaps. Each object:
-  { "t": <window start in seconds, a multiple of ${step}>,
-    "d": "<one sentence, present tense, describing what is on screen and what is said or heard in that window>" }
-Cover EVERY window in order. Do NOT merge, skip or group windows — a window where little happens still gets its own entry saying so. ${n ? `The array must contain ${n} entries: t = 0, ${step}, ${step * 2}, and so on up to ${(n - 1) * step}.` : ''} If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover. When someone speaks or sings, write the actual words as close to verbatim as you can make out — do not just note that speech or a voiceover is happening. If a word is genuinely unclear, give your best guess followed by a question mark rather than skip it.
-
-TRANSCRIBE IN THE LANGUAGE SPOKEN. Sri Lankan content is often in Sinhala or Tamil, sometimes mixed with English in the same line. Write the words in the language they are sung or spoken in, using that language's own script, and do not translate them. Never leave words out because they are not in English.
-
-LYRICS COUNT AS SPEECH. In a music video the lyrics are the content, so a window over a sung line must contain that line. Descriptions like "she sings into a microphone", "the chorus plays" or "rap section performed" without the words are not acceptable on their own — the words are what is being asked for. Instrumental passages with no vocals are the one exception; say so plainly for those windows.
-
-Return only the JSON object. No markdown, no commentary.`;
-}
-
-// ── Step 1: CDN link ──────────────────────────────────────────────────────────
-async function resolveMediaUrl(mediaUrl) {
-  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY is not set.');
-
-  const { data } = await axios.request({
-    method: 'GET',
-    url: `https://${RAPIDAPI_HOST}/fetch`,
-    params: { url: mediaUrl },
-    headers: {
-      'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
-      'X-RapidAPI-Host': RAPIDAPI_HOST,
-    },
-    timeout: 60000,
-  });
-
-  // The API returns HTTP 200 with ok:false on failure, so the status code
-  // alone is not enough to tell success from failure.
-  if (!data || data.ok === false) {
-    throw new Error(`API rejected the link: ${(data && (data.error || data.message)) || 'unknown reason'}`);
-  }
-  if (!data.download_url) throw new Error('API returned no download_url.');
-  return data;
-}
-
-// ── Step 2: download ──────────────────────────────────────────────────────────
-async function streamToFile(url, destPath) {
-  // CDN links are signed and short-lived, and Instagram's fbcdn rejects
-  // requests without a browser-ish user agent.
-  const res = await axios({
-    url, method: 'GET', responseType: 'stream',
-    timeout: 180000, maxRedirects: 5,
-    headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36' },
-  });
-
-  await new Promise((resolve, reject) => {
-    const writer = fs.createWriteStream(destPath);
-    res.data.pipe(writer);
-    writer.on('finish', resolve);
-    writer.on('error', err => {
-      try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (e) {}
-      reject(err);
-    });
-  });
-
-  const { size } = fs.statSync(destPath);
-  if (size < 10240) {
-    fs.unlinkSync(destPath);
-    throw new Error('Downloaded file was too small to be a video.');
-  }
-  return destPath;
-}
-
-// ── Steps 3-4: Gemini ─────────────────────────────────────────────────────────
-async function analyseVideo(ai, videoPath, hintDuration) {
-  const geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+// Sessions live in Redis when it is available. The default MemoryStore keeps
+// them in this process, so every deploy logged everyone out and the browser
+// was left holding a cookie for a session that no longer existed — which is
+// what produced "Not authenticated" right after a deploy.
+let sessionStore;
+if (process.env.REDIS_URL) {
   try {
-    let state = await ai.files.get({ name: geminiFile.name });
-    const deadline = Date.now() + 5 * 60 * 1000;
-    while (state.state === 'PROCESSING') {
-      if (Date.now() > deadline) throw new Error('Gemini processing timed out after 5 minutes.');
-      await new Promise(r => setTimeout(r, 3000));
-      state = await ai.files.get({ name: geminiFile.name });
-    }
-    if (state.state === 'FAILED') {
-      // Gemini returns a reason on the file object. Without it every failure
-      // reads the same in the notification, so a transient backend wobble is
-      // indistinguishable from an unsupported codec.
-      const e = state.error || {};
-      const why = e.message || e.reason || (Object.keys(e).length ? JSON.stringify(e) : 'no reason given');
-      throw new Error(`Gemini processing failed: ${why}`);
-    }
+    const RedisStore = require('connect-redis').default || require('connect-redis');
+    const IORedis = require('ioredis');
+    const sessionRedis = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+    sessionRedis.on('error', e => console.error('[session] redis:', e.message));
+    sessionStore = new RedisStore({ client: sessionRedis, prefix: 'sess:' });
+    console.log('[session] using Redis store');
+  } catch (e) {
+    console.error('[session] Redis store unavailable, falling back to memory:', e.message);
+  }
+} else {
+  console.warn('[session] REDIS_URL not set — sessions reset on every restart.');
+}
 
+// Render terminates TLS at its proxy, so without this Express sees the request
+// as plain HTTP and a secure cookie would never be set on the custom domain.
+app.set('trust proxy', 1);
+
+app.use(session({
+  store: sessionStore,
+  secret: process.env.SESSION_SECRET || 'changeme-set-in-env',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 8 * 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: 'lax'
+  }
+}));
+
+// Auth middleware — skips login/logout routes
+function requireAuth(req, res, next) {
+  if (req.path === '/login' || req.path === '/logout' || req.path === '/api/test-gemini') return next();
+  if (req.path.startsWith('/img/')) return next();
+  if (req.session && req.session.user) return next();
+  // API calls get 401, not redirect
+  if (req.path.startsWith('/api/')) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  res.redirect('/login');
+}
+
+app.options('*', cors({ origin: '*' }));
+
+app.use(requireAuth);
+
+// Role isolation. An influencer coordinator gets exactly one page and the
+// handful of API routes it needs; anything else bounces them back to it.
+// Everyone else never sees that page.
+const COORD_ROLE = 'influencer_coordinator';
+const COORD_API = new Set([
+  '/api/brands', '/api/switch-brand',
+  '/api/others-say-pending', '/api/others-say-stats', '/api/add-creative',
+  '/api/campaigns', '/api/creators',
+]);
+// Deny by default: a coordinator may reach their own page, the assets it
+// needs, and the allowlisted APIs. Everything else bounces. Nothing here
+// depends on remembering to name a new page, so adding pages elsewhere in
+// the app cannot accidentally expose them to this role.
+const COORD_ASSET_RE = /^\/(img|fonts)\//;
+app.use((req, res, next) => {
+  const role = req.session && req.session.role;
+  const p = req.path;
+  if (role !== COORD_ROLE) return next();
+
+  const ok = p === '/coordinator' || p === '/logout'
+    || COORD_ASSET_RE.test(p) || COORD_API.has(p);
+  if (ok) return next();
+  if (p.startsWith('/api/')) return res.status(403).json({ error: 'Not permitted for this role' });
+  return res.redirect('/coordinator');
+});
+
+// Served from views/, not public/. The static handler cannot reach it, so the
+// only way to this page is through this route, which is behind requireAuth
+// and the role check below.
+// Read at boot so the page is served from memory, but never fatally: this
+// runs at module load, so an unreadable file here would stop the whole app
+// from starting rather than just breaking one page.
+const COORDINATOR_HTML = (() => {
+  for (const p of [path.join(__dirname, 'views', 'coordinator.html'),
+                   path.join(__dirname, 'coordinator.html')]) {
+    try { return fs.readFileSync(p, 'utf8'); } catch (e) { /* try the next */ }
+  }
+  console.error('[server] coordinator.html not found in views/ or repo root — /coordinator will 503');
+  return null;
+})();
+
+app.get('/coordinator', (req, res) => {
+  if (!COORDINATOR_HTML) {
+    return res.status(503).send('Coordinator page is not installed on this deploy.');
+  }
+  if (!req.session || req.session.role !== COORD_ROLE) return res.redirect('/');
+  res.type('html').send(COORDINATOR_HTML);
+});
+
+const LOGIN_HTML = fs.readFileSync(path.join(__dirname, 'public', 'login.html'), 'utf8');
+
+app.get('/login', (req, res) => {
+  if (req.session && req.session.user) return res.redirect('/');
+  const err = req.query.error
+    ? '<div class="err">Incorrect username or password.</div>'
+    : '';
+  res.send(LOGIN_HTML.replace('<!-- ERROR_BLOCK -->', err));
+});
+
+
+app.get('/logout', (req, res) => {
+  req.session.destroy();
+  res.redirect('/login');
+});
+
+app.post('/api/test-gemini', async (req, res) => {
+  const { videoBase64, password } = req.body;
+  if (password !== process.env.TEST_SECRET) return res.status(401).json({ error: 'Wrong password' });
+  try {
+  console.log(`[AI Worker] Generating detailed descriptions...`);
+    
+    const prompt = `Watch this video carefully and provide a highly descriptive visual and narrative analysis. Extract the following 5 segments:
+
+1. "hook": Write exactly 2 detailed sentences describing the opening hook (first 3 seconds). Note the visual impact, audio, or text used to grab attention.
+2. "seg1": (0–25%) Write exactly 2-3 detailed sentences describing the setting, who appears, specific actions, and any text on screen.
+3. "seg2": (25–50%) Write exactly 2-3 detailed sentences describing how the narrative, demonstration, or emotional tone develops.
+4. "seg3": (50–75%) Write exactly 2-3 detailed sentences describing the core product moment, key features shown, or the climax of the message.
+5. "seg4": (75–100%) Write exactly 2-3 detailed sentences describing the closing scene, final branding moments, and the call to action.
+
+Make your descriptions vivid and specific (mention colors, emotions, or exact text if relevant). Return ONLY a valid JSON object with exactly these keys: "hook", "seg1", "seg2", "seg3", "seg4". Do not use markdown formatting or include any extra text outside the JSON.`;
     const result = await ai.models.generateContent({
-      model: GEMINI_MODEL,
+      model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
       contents: [{ role: 'user', parts: [
-        {
-          fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' },
-          ...(MEDIA_RESOLUTION
-            ? { videoMetadata: { mediaResolution: `MEDIA_RESOLUTION_${MEDIA_RESOLUTION.toUpperCase()}` } }
-            : {}),
-        },
-        { text: buildPrompt(hintDuration) },
+        { inlineData: { mimeType: 'video/mp4', data: videoBase64 } },
+        { text: prompt }
       ]}],
-      // A 90s video at 2s granularity is ~45 timeline entries plus the four
-      // quartile segments, and thinking tokens count toward this ceiling.
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: RESPONSE_SCHEMA,
-        maxOutputTokens: 16000,
-        ...(THINKING_BUDGET !== null && Number.isFinite(THINKING_BUDGET)
-          ? { thinkingConfig: { thinkingBudget: THINKING_BUDGET } }
-          : {}),
-      },
+      config: { responseMimeType: 'application/json', maxOutputTokens: 4000 }
     });
-    // Log real token usage. Thinking tokens bill at output rates and are the
-    // hardest part of the cost to predict, so measure rather than estimate.
-    const u = result.usageMetadata || {};
-    const inTok = u.promptTokenCount || 0;
-    const outTok = u.candidatesTokenCount || 0;
-    const think = u.thoughtsTokenCount || 0;
-    const IN_RATE = Number(process.env.GEMINI_IN_RATE || 0.75) / 1e6;
-    const OUT_RATE = Number(process.env.GEMINI_OUT_RATE || 3.75) / 1e6;
-    const usage = {
-      model: GEMINI_MODEL,
-      input_tokens: inTok,
-      output_tokens: outTok,
-      thinking_tokens: think,
-      total_tokens: u.totalTokenCount || (inTok + outTok + think),
-      // Thinking tokens bill at output rates.
-      cost_usd: Number((inTok * IN_RATE + (outTok + think) * OUT_RATE).toFixed(6)),
-    };
-    if (inTok || outTok) {
-      console.log(`[gemini] model=${usage.model} in=${inTok} out=${outTok} thinking=${think} ` +
-                  `total=${usage.total_tokens} cost=$${usage.cost_usd.toFixed(4)}`);
-    }
-
     const parsed = JSON.parse(result.text.replace(/```json|```/g, '').trim());
-    // Non-enumerable so it rides along for callers that want it without ever
-    // showing up in JSON.stringify of the analysis itself.
-    Object.defineProperty(parsed, '_usage', { value: usage, enumerable: false });
-    return parsed;
-  } finally {
-    try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {}
+    res.json({ success: true, result: parsed });
+  } catch(err) {
+    res.json({ success: false, error: err.message });
   }
+});
+
+// Serve static files — only after auth middleware
+app.use(express.static(path.join(__dirname, 'public')));
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+
+
+
+
+// Background download queue — routes only mount when REDIS_URL is set
+require('./media-queue').mountMediaQueue(app);
+
+// Run the queue worker inside this process. At current volume a dedicated
+// Render Background Worker costs $7/month and buys nothing; the downloads are
+// I/O bound and never block the event loop. To split it out later, set
+// RUN_WORKER_IN_PROCESS=false here and deploy a worker service with the start
+// command `node worker.js` — same file, no code change.
+if (String(process.env.RUN_WORKER_IN_PROCESS || 'true') !== 'false') {
+  require('./worker').startWorker(ai);
 }
 
-/**
- * Models drift on shape: t may come back as "0", "0s" or "00:04", and windows
- * can arrive out of order or duplicated. Normalise to { t: <number>, d: <string> }
- * sorted and de-duplicated, so anything reading this can trust the grid.
- */
-function normaliseTimeline(raw) {
-  if (!Array.isArray(raw)) return [];
-  const seen = new Set();
-  const out = [];
+// All Postgres-backed API routes live in routes.js
+require('./routes')(app, { ai, youtubedl });
 
-  for (const item of raw) {
-    if (!item) continue;
-    const d = String(item.d || item.desc || item.description || '').trim();
-    if (!d) continue;
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-    let t = item.t !== undefined ? item.t : (item.start !== undefined ? item.start : item.time);
-    if (typeof t === 'string') {
-      const mmss = t.match(/^(\d+):(\d+(?:\.\d+)?)$/);
-      t = mmss ? Number(mmss[1]) * 60 + Number(mmss[2]) : parseFloat(t.replace(/[^\d.]/g, ''));
-    }
-    t = Number(t);
-    if (!Number.isFinite(t) || t < 0) continue;
+const PORT = process.env.PORT || 8080;
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on port ${PORT}`);
+});
 
-    t = Math.round(t * 10) / 10;
-    if (seen.has(t)) continue;
-    seen.add(t);
-    out.push({ t, d });
-  }
-
-  out.sort((x, y) => x.t - y.t);
-  // No hard slice: stepFor already bounds the count, and truncating here
-  // would silently drop the end of a video the model described correctly.
-  return out;
-}
-
-// ── The job ───────────────────────────────────────────────────────────────────
-function makeProcessor(ai) {
-  return async function processJob(job) {
-    const d = job.data;
-    const { mediaUrl, creativeId, platform } = d;
-    let videoPath = null;
-
-    try {
-      await job.updateProgress({ step: 'resolving', pct: 10 });
-      const meta = await resolveMediaUrl(mediaUrl);
-
-      await job.updateProgress({ step: 'downloading', pct: 30 });
-      videoPath = path.join(os.tmpdir(), `creative_${job.id}.mp4`);
-      await streamToFile(meta.download_url, videoPath);
-
-      await job.updateProgress({ step: 'analysing', pct: 60 });
-      const a = await analyseVideo(ai, videoPath, typeof meta.duration === 'number' ? meta.duration : null);
-
-      // A partial analysis is not worth storing — the dashboard labels
-      // segments by position, so a missing one mislabels the rest.
-      if (!a.hook || !String(a.hook).trim()) {
-        throw new Error('Analysis incomplete — no hook returned.');
-      }
-
-      const timeline = normaliseTimeline(a.timeline);
-      if (!timeline.length) {
-        throw new Error('Analysis incomplete — no timeline returned.');
-      }
-
-      // Models save output tokens by grouping windows ("0:14-0:30: she keeps
-      // talking"). That returns valid JSON with a sparse timeline, which would
-      // otherwise be stored as if complete. Check coverage against duration
-      // and fail the job so the retry gets another go.
-      const durForCheck = (typeof meta.duration === 'number' && meta.duration > 0)
-        ? meta.duration
-        : (Number.isFinite(parseFloat(a.duration)) ? parseFloat(a.duration) : null);
-
-      if (durForCheck) {
-        const step = stepFor(durForCheck);
-        const expected = Math.ceil(durForCheck / step);
-        // 70%: allows a window or two of slack at the tail without accepting
-        // a timeline that has clearly been collapsed.
-        if (timeline.length < Math.floor(expected * 0.7)) {
-          throw new Error(
-            `Timeline too sparse — got ${timeline.length} windows for ${durForCheck.toFixed(0)}s, ` +
-            `expected about ${expected} at ${step}s. The model grouped intervals.`
-          );
-        }
-        const lastCovered = timeline[timeline.length - 1].t + step;
-        if (lastCovered < durForCheck * 0.8) {
-          throw new Error(
-            `Timeline stops at ${lastCovered.toFixed(0)}s of ${durForCheck.toFixed(0)}s — incomplete coverage.`
-          );
-        }
-      }
-
-      // Gemini estimates duration by watching, and that drives the retention
-      // denominator. Anything outside 1-600s is a bad read, not a long video.
-      // The API's own duration wins when it gives one: TikTok does, Instagram
-      // returns null.
-      const apiDur = typeof meta.duration === 'number' ? meta.duration : null;
-      const aiDur = parseFloat(a.duration);
-      const guess = apiDur !== null ? apiDur : (Number.isFinite(aiDur) ? aiDur : null);
-      const safeDur = guess !== null && guess >= 1 && guess <= 600 ? guess : null;
-
-      // Insert the complete row only now. Nothing reaches the database
-      // without descriptions, so a failed job leaves no half-creative behind.
-      await job.updateProgress({ step: 'saving', pct: 90 });
-      await query(
-        `insert into creatives
-           (creative_id, brand_id, date, campaign, type, is_repurposed,
-            original_creative_id, content_type, ig_link, fb_link, tt_link,
-            content_hook, duration_s, segments,
-            format, product_role, format_note, creator_profile, creator_id)
-         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',
-                 $8,$9,$10,$11,$12,$13,
-                 $14,$15,$16,$17,$18)
-         on conflict (creative_id) do update set
-           content_hook = excluded.content_hook,
-           duration_s = coalesce(excluded.duration_s, creatives.duration_s),
-           segments = excluded.segments,
-           format = excluded.format,
-           product_role = excluded.product_role,
-           format_note = excluded.format_note`,
-        [creativeId, d.brand, d.date, d.campaign, d.type, d.repurposed,
-         d.originalId, d.ig, d.fb, d.tt,
-         a.hook, safeDur, JSON.stringify(timeline),
-         a.format || null, a.product_role || null, a.format_note || null,
-         d.creator || null, d.creatorId || null]
-      );
-
-      console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s, ${timeline.length} segments) and added`);
-
-      notifySuccess({
-        creativeId, brand: d.brand, campaign: d.campaign, platform,
-        duration: safeDur, hook: a.hook,
-        addedBy: d.addedBy, addedByName: d.addedByName, addedByEmail: d.addedByEmail,
-      }).catch(e => console.error('[worker] notify:', e.message));
-      return {
-        status: 'completed', creativeId, platform,
-        hook: a.hook || null,
-        timelineCount: timeline.length,
-        duration: safeDur,
-        caption: meta.caption || '',
-        thumbnail: meta.thumbnail_url || '',
-      };
-    } finally {
-      // Temp file only — nothing is served from disk, so there is no reason to
-      // keep it, and Render's filesystem is ephemeral anyway.
-      if (videoPath && fs.existsSync(videoPath)) {
-        try { fs.unlinkSync(videoPath); } catch (e) {}
-      }
-    }
-  };
-}
-
-// ── Start ─────────────────────────────────────────────────────────────────────
-function startWorker(ai) {
-  if (!process.env.REDIS_URL) {
-    console.log('[worker] REDIS_URL not set — worker not started.');
-    return null;
-  }
-  if (!ai) {
-    console.warn('[worker] No Gemini client available — jobs will fail at the analysis step.');
-  }
-
-  const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
-  connection.on('error', e => console.error('[worker] redis:', e.message));
-
-  const worker = new Worker('creative-downloads', makeProcessor(ai), {
-    connection,
-    concurrency: Number(process.env.WORKER_CONCURRENCY || 2),
-    // A deploy kills the process mid-job. Without these, BullMQ treats the
-    // silence as a failed attempt and burns a retry on a job that was never
-    // actually broken. lockDuration must exceed the longest analysis; a
-    // 5-minute Gemini wait plus download and upload fits inside 10.
-    lockDuration: 10 * 60 * 1000,
-    stalledInterval: 30 * 1000,
-    maxStalledCount: 3,
+// Render sends SIGTERM on every deploy. The queue worker runs inside this
+// process, so a hard exit kills any analysis in flight and burns one of its
+// retries. Stop accepting new HTTP connections first, then let worker.js's
+// own handler drain the jobs it already has. Render allows ~30s before
+// SIGKILL; anything still running past that is picked up as a stalled job
+// and retried by the next instance rather than lost.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[server] ${signal} — closing HTTP listener, draining in-flight work`);
+    server.close(() => console.log('[server] HTTP listener closed'));
   });
-
-  // A job whose worker vanished is not a real failure: it never got to run.
-  worker.on('stalled', (jobId) => {
-    console.warn(`[worker] job ${jobId} stalled (worker restarted mid-job) — requeueing`);
-  });
-
-  worker.on('failed', (job, err) => {
-    if (!job) return;
-    const attempts = job.opts && job.opts.attempts ? job.opts.attempts : 1;
-    console.error(`[worker] job ${job.id} failed (attempt ${job.attemptsMade}/${attempts}): ${err.message}`);
-    // Only notify once the retries are exhausted — otherwise a transient
-    // rate-limit sends three emails for one creative.
-    if (job.attemptsMade >= attempts) {
-      notifyFailure({
-        creativeId: job.data.creativeId, brand: job.data.brand,
-        campaign: job.data.campaign, link: job.data.mediaUrl,
-        error: err.message, attempts,
-        addedByName: job.data.addedByName, addedByEmail: job.data.addedByEmail,
-      }).catch(e => console.error('[worker] notify:', e.message));
-    }
-  });
-  worker.on('completed', job => console.log(`[worker] job ${job.id} completed`));
-
-  attachShutdown(worker, connection);
-
-  console.log('[worker] active and listening for background download tasks');
-  return worker;
-}
-
-// ── Graceful shutdown ─────────────────────────────────────────────────────────
-// Render sends SIGTERM on every deploy and waits ~30s before SIGKILL. Without
-// a handler the process dies mid-job, the analysis is lost, and the attempt is
-// counted against the job's retries. worker.close() stops taking new work and
-// waits for what is already running, so a deploy during a batch costs a short
-// wait instead of failed creatives.
-function attachShutdown(worker, connection) {
-  let closing = false;
-  const shutdown = async (signal) => {
-    if (closing) return;
-    closing = true;
-    console.log(`[worker] ${signal} received — finishing in-flight jobs, no new ones accepted`);
-    try {
-      await worker.close();            // waits for active jobs
-      console.log('[worker] all in-flight jobs finished');
-    } catch (e) {
-      console.error('[worker] shutdown error:', e.message);
-    }
-    try { await connection.quit(); } catch (e) { /* redis already gone */ }
-    process.exit(0);
-  };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT',  () => shutdown('SIGINT'));
-}
-
-module.exports = { startWorker, buildPrompt, normaliseTimeline, RESPONSE_SCHEMA };
-
-// Standalone mode: node worker.js
-if (require.main === module) {
-  const { GoogleGenAI } = require('@google/genai');
-  const ai = process.env.GEMINI_API_KEY
-    ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
-    : null;
-  startWorker(ai);
 }
