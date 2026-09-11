@@ -369,10 +369,10 @@ function makeProcessor(ai) {
            (creative_id, brand_id, date, campaign, type, is_repurposed,
             original_creative_id, content_type, ig_link, fb_link, tt_link,
             content_hook, duration_s, segments,
-            format, product_role, format_note, creator_profile)
+            format, product_role, format_note, creator_profile, creator_id)
          values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',
                  $8,$9,$10,$11,$12,$13,
-                 $14,$15,$16,$17)
+                 $14,$15,$16,$17,$18)
          on conflict (creative_id) do update set
            content_hook = excluded.content_hook,
            duration_s = coalesce(excluded.duration_s, creatives.duration_s),
@@ -384,7 +384,7 @@ function makeProcessor(ai) {
          d.originalId, d.ig, d.fb, d.tt,
          a.hook, safeDur, JSON.stringify(timeline),
          a.format || null, a.product_role || null, a.format_note || null,
-         d.creator || null]
+         d.creator || null, d.creatorId || null]
       );
 
       console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s, ${timeline.length} segments) and added`);
