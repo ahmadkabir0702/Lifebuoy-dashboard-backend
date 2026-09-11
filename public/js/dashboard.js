@@ -316,7 +316,7 @@ if (sf === 'ACTIVE')                data = data.filter(d => d.adStatus === 'ACTI
   if (of === 'has_repurposed') data = data.filter(d => repurposesOf(d.id).length > 0);
   if (vf === 'validated')     data = data.filter(d => d.isValidated);
   if (vf === 'not_validated') data = data.filter(d => !d.isValidated);
-  if (searchQ) data = data.filter(d => d.id.toLowerCase().includes(searchQ) || (d.short||'').toLowerCase().includes(searchQ));
+  if (searchQ) data = data.filter(d => matchesSearch(d, searchQ));
 
   return [...data].sort((a,b) => {
     let valA = 0, valB = 0;
@@ -345,6 +345,52 @@ function hookColor(v) { return v>=40?'#04785C':v>=20?'#8A5A12':'#A32040'; }
 function cqrClass(c)  { return {Good:'good-bg',Average:'avg-bg',Poor:'poor-bg',Invalid:'inv-bg'}[c]||'inv-bg'; }
 function fmt(n)  { return n>=1000000?'Rs. '+(n/1000000).toFixed(1)+'M':n>=1000?'Rs. '+(n/1000).toFixed(0)+'K':'Rs. '+n; }
 function fmtN(n) { return n>=1000000?(n/1000000).toFixed(1)+'M':n>=1000?(n/1000).toFixed(0)+'K':String(n); }
+
+// ---------------------------------------------------------------------
+//  Search
+//  Matches the creative ID, its short name, the creator, the campaign, and
+//  any of the three post links. Pasting a link from the address bar brings
+//  its own query string, and the stored link usually has a different one, so
+//  a plain substring check would miss. The identifying part of the URL is
+//  pulled out of both sides and compared instead.
+// ---------------------------------------------------------------------
+
+// instagram.com/reel/Dc6Vb-6zw5g/?utm_source=... -> dc6vb-6zw5g
+// tiktok.com/@vaseline_sl/video/7682474116825320712 -> 7682474116825320712
+function postKey(url) {
+  if (!url) return '';
+  const clean = String(url).split('?')[0].split('#')[0].replace(/\/+$/, '');
+  const segs = clean.split('/').filter(Boolean);
+  const last = segs[segs.length - 1] || '';
+  // Skip a trailing path word like "reel" or "video" with no id after it.
+  if (/^(reel|reels|video|videos|p|share|v)$/i.test(last)) return '';
+  return last.toLowerCase();
+}
+
+function matchesSearch(d, q) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) return true;
+
+  const links = [d.igLink, d.fbLink, d.ttLink].filter(Boolean);
+
+  // If a URL was pasted, compare on the post id rather than the whole string.
+  const looksLikeUrl = /^https?:\/\//i.test(q) || /\.(com|net|org|me)\//i.test(q);
+  const qKey = postKey(q);
+  if (qKey && qKey.length > 4) {
+    if (links.some(l => postKey(l) === qKey)) return true;
+    if (links.some(l => String(l).toLowerCase().includes(qKey))) return true;
+    // A pasted link that matches no post is a miss, not a reason to fall
+    // through to substring matching on the domain.
+    if (looksLikeUrl) return false;
+  } else if (looksLikeUrl) {
+    // A URL with no identifiable post in it (".../reel/") would otherwise
+    // substring-match every creative on that platform.
+    return false;
+  }
+
+  const fields = [d.id, d.short, d.creatorProfile, d.campaign, ...links];
+  return fields.some(v => String(v || '').toLowerCase().includes(q));
+}
 
 function render() {
   const data = getData();
@@ -1061,6 +1107,26 @@ function syncPlatFields({ clearOff = true } = {}) {
   });
 }
 
+// Mirrors the server's id rule so the field shows what will actually be
+// created. The server still decides, and appends a stamp if the id is taken.
+const DESCRIPTION_MAX = 20;
+function slugForId(s) {
+  return String(s || '').toUpperCase().replace(/&/g, 'AND')
+    .replace(/[^A-Z0-9]+/g, '').slice(0, DESCRIPTION_MAX);
+}
+
+function previewCreativeId() {
+  const el = document.getElementById('ac-id-preview');
+  if (!el) return;
+  const type = (document.getElementById('ac-type') || {}).value;
+  const desc = (document.getElementById('ac-description') || {}).value;
+  const slug = slugForId(desc);
+  if (!slug) { el.innerHTML = 'No description: the ID will be auto-generated.'; return; }
+  const code = type === 'Others Say' ? 'OS' : 'BS';
+  const brand = (typeof BRAND_NAME !== 'undefined' && BRAND_NAME ? BRAND_NAME : 'BRAND').toUpperCase();
+  el.innerHTML = `ID will be <b>${brand}_${code}_${slug}</b>`;
+}
+
 function onPlatToggle(k) {
   syncPlatFields();
   const box = document.getElementById(`ac-${k}-on`);
@@ -1108,6 +1174,7 @@ function acRenderReview(f) {
   return `<div class="rv">
     <h4>Check before submitting</h4>
     ${line('Date', f.date)}
+    ${(document.getElementById('ac-description') || {}).value ? line('Description', document.getElementById('ac-description').value) : ''}
     ${line('Campaign', f.campaign)}
     ${line('Category', f.type)}
     ${f.type === 'Brand Say' ? line('Repurposed', f.repurposed) : ''}
@@ -1151,7 +1218,11 @@ async function submitCreative(e) {
   if (!AC_REVIEWED) {
     const err = acValidate(f);
     if (err) { alert(err); return; }
-    const rv = document.getElementById('ac-review');
+    const desc = document.getElementById('ac-description');
+  if (desc) desc.value = '';
+  const idPrev = document.getElementById('ac-id-preview');
+  if (idPrev) idPrev.innerHTML = '';
+  const rv = document.getElementById('ac-review');
     rv.innerHTML = acRenderReview(f);
     rv.style.display = 'block';
     ['ac-date', 'ac-campaign', 'ac-type', 'ac-repurposed', 'ac-original-id'].forEach(id => {
@@ -1171,6 +1242,7 @@ async function submitCreative(e) {
   const ig = f.plats.ig.on ? f.plats.ig.link : '';
   const fb = f.plats.fb.on ? f.plats.fb.link : '';
   const tt = f.plats.tt.on ? f.plats.tt.link : '';
+  const description = (document.getElementById('ac-description') || {}).value || '';
   const repurposed = f.repurposed;
   const originalId = f.originalId;
   
@@ -1202,7 +1274,7 @@ async function submitCreative(e) {
     const res = await fetch('/api/add-creative', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, brand: BRAND_NAME }),
+      body: JSON.stringify({ campaign, type, date, ig, fb, tt, repurposed, originalId, description, brand: BRAND_NAME }),
       signal: AbortSignal.timeout(120000)
     });
     clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
