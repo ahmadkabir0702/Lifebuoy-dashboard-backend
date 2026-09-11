@@ -1,95 +1,502 @@
--- Adding creators and assigning them to campaigns.
---
--- SECTION 1 only matters if the earlier version of this template was already
--- run and put the example names in. If it was not, skip to SECTION 2.
+/**
+ * worker.js — background creative processor
+ *
+ * Does everything /api/add-creative used to do inline, minus the initial row
+ * insert (which stays in the route so the creative appears immediately):
+ *
+ *   1. resolve a CDN link via RapidAPI
+ *   2. stream the mp4 to a temp file
+ *   3. upload to Gemini, wait for processing
+ *   4. ask for hook + a fixed-interval timeline + duration
+ *   5. write the analysis back to `creatives`
+ *
+ * Runs two ways, same code:
+ *   - in-process, started from server.js (default — no extra Render service)
+ *   - standalone, `node worker.js`, when you want a dedicated service
+ *
+ * At ~17 videos a day the in-process worker is free and sufficient. Splitting
+ * it out later is a start command, not a rewrite.
+ */
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const axios = require('axios');
+const { Worker } = require('bullmq');
+const IORedis = require('ioredis');
+const { query } = require('./db');
+const { notifySuccess, notifyFailure } = require('./notify');
 
--- ---------------------------------------------------------------------
--- SECTION 1: remove the example creators, if they were loaded
--- ---------------------------------------------------------------------
--- Check first. If a creative is already linked to one of these, that link
--- is what you would lose.
-select cr.name,
-       (select count(*) from creatives c where c.creator_id = cr.id) as creatives_linked,
-       (select count(*) from campaign_creators cc where cc.creator_id = cr.id) as campaign_assignments
-  from creators cr
- where lower(cr.name) in ('shanudrie priyasad','romaine willis','prathiba hettiarachchi',
-                          'rayini charuka','ashanthi de alwis','yohani')
- order by cr.name;
+// Gemini model. Google retires these on their own schedule — 2.5-flash was
+// pulled for new users — so it is an env var, changeable without a deploy.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 
--- Unlink before deleting so no creative is removed, only the link.
-update creatives set creator_id = null
- where creator_id in (select id from creators
-                       where lower(name) in ('shanudrie priyasad','romaine willis',
-                                             'prathiba hettiarachchi','rayini charuka',
-                                             'ashanthi de alwis','yohani'));
+// Cost levers, all env-tunable so they can be tried without a deploy.
+//   GEMINI_THINKING_BUDGET  thinking tokens bill at OUTPUT rates. Describing
+//                           what is on screen needs little reasoning, so a low
+//                           budget is cheaper and faster. -1 = model default,
+//                           0 = off where the model allows it.
+//   GEMINI_MEDIA_RESOLUTION video input is ~60% of the cost. 'low' cuts it
+//                           substantially; the trade is small on-screen text.
+const THINKING_BUDGET = process.env.GEMINI_THINKING_BUDGET === undefined
+  ? null : Number(process.env.GEMINI_THINKING_BUDGET);
+const MEDIA_RESOLUTION = process.env.GEMINI_MEDIA_RESOLUTION || null;
 
--- creator_profiles and campaign_creators cascade from this.
-delete from creators
- where lower(name) in ('shanudrie priyasad','romaine willis','prathiba hettiarachchi',
-                       'rayini charuka','ashanthi de alwis','yohani');
+const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST
+  || 'instagram-tiktok-youtube-downloader.p.rapidapi.com';
 
--- ---------------------------------------------------------------------
--- SECTION 2: add your creators
---
--- One row per creator per platform. Leave a platform out if they are not on
--- it. Safe to re-run: an existing creator is matched on name and their
--- profiles updated rather than duplicated.
--- ---------------------------------------------------------------------
-with input(name, platform, handle, profile_url) as (values
-  -- name          platform   handle       profile url
-  ('REPLACE ME',   'ig',      '@handle',   'https://www.instagram.com/handle/')
-  -- ,('Second Creator', 'ig', '@handle', 'https://www.instagram.com/handle/')
-  -- ,('Second Creator', 'tt', '@handle', 'https://www.tiktok.com/@handle')
-),
-upsert_creators as (
-  insert into creators (name)
-  select distinct name from input
-  on conflict (lower(name)) do update set is_active = true
-  returning id, name
-),
-all_creators as (
-  select id, name from upsert_creators
-  union
-  select c.id, c.name from creators c
-   where lower(c.name) in (select lower(name) from input)
-)
-insert into creator_profiles (creator_id, platform, handle, profile_url)
-select ac.id, i.platform, i.handle, i.profile_url
-  from input i
-  join all_creators ac on lower(ac.name) = lower(i.name)
-on conflict (creator_id, platform) do update
-  set handle = excluded.handle, profile_url = excluded.profile_url;
+// Segment granularity. Fixed intervals, not scene changes: retention data is
+// time-indexed, so to say "hold rate collapses at 6s and here is what was on
+// screen at 6s" the descriptions have to sit on the same time grid.
+const SEG_SECONDS = Number(process.env.SEGMENT_SECONDS || 2);
+const MAX_SEGMENTS = Number(process.env.MAX_SEGMENTS || 60);
 
--- ---------------------------------------------------------------------
--- SECTION 3: assign creators to a campaign
---
--- Change the brand, the campaign name and the creator list. Running this
--- again for another campaign reuses the same creators rather than creating
--- new ones.
--- ---------------------------------------------------------------------
-insert into campaign_creators (campaign_id, creator_id)
-select cp.id, cr.id
-  from campaigns cp
-  join creators  cr on lower(cr.name) in (
-        lower('REPLACE ME')
-        -- , lower('Second Creator')
-      )
- where cp.brand_id = 'REPLACE_BRAND'
-   and cp.name     = 'REPLACE CAMPAIGN NAME'
-on conflict do nothing;
+/**
+ * Widen the interval rather than truncating long videos. A 149s video at 2s
+ * needs 75 windows; capping at 60 described only the first 120s and left the
+ * last 29 unanalysed. Stepping to 3s covers the whole thing in 50 windows,
+ * which also keeps output tokens — and the model's tendency to give up on
+ * long lists — under control.
+ */
+function stepFor(duration) {
+  if (!duration || duration <= 0) return SEG_SECONDS;
+  let step = SEG_SECONDS;
+  while (Math.ceil(duration / step) > MAX_SEGMENTS) step += 1;
+  return step;
+}
 
--- ---------------------------------------------------------------------
--- SECTION 4: check
--- ---------------------------------------------------------------------
-select cr.name as creator,
-       string_agg(p.platform || ' ' || coalesce(p.handle, ''), ', ' order by p.platform) as profiles
-  from creators cr
-  left join creator_profiles p on p.creator_id = cr.id
- group by cr.name
- order by cr.name;
+// Structured output. responseMimeType alone asks for JSON without saying what
+// shape; a schema constrains it, which is what stops the model returning an
+// object where an array is expected or renaming keys.
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    duration: { type: 'number' },
+    format: {
+      type: 'string',
+      enum: ['music_video', 'product_demo', 'talking_head', 'testimonial',
+             'lifestyle', 'tutorial', 'ugc', 'animation', 'other'],
+    },
+    product_role: { type: 'string', enum: ['hero', 'featured', 'incidental', 'absent'] },
+    format_note: { type: 'string' },
+    hook: { type: 'string' },
+    timeline: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          t: { type: 'number' },
+          d: { type: 'string' },
+        },
+        required: ['t', 'd'],
+      },
+    },
+  },
+  required: ['duration', 'format', 'product_role', 'format_note', 'hook', 'timeline'],
+  propertyOrdering: ['duration', 'format', 'product_role', 'format_note', 'hook', 'timeline'],
+};
 
-select cp.brand_id, cp.name as campaign, cr.name as creator
-  from campaign_creators cc
-  join campaigns cp on cp.id = cc.campaign_id
-  join creators  cr on cr.id = cc.creator_id
- order by cp.brand_id, cp.name, cr.name;
+function buildPrompt(hintDuration) {
+  const dur = hintDuration && hintDuration > 0 ? hintDuration : null;
+  const step = stepFor(dur);
+  const n = dur ? Math.ceil(dur / step) : null;
+
+  return `Watch this video carefully and describe it on a fixed time grid.
+
+Return ONE JSON object with these keys:
+
+"duration": the exact length of the video in seconds (number).
+
+"format": what kind of video this is. Exactly one of:
+  "music_video" — a song is the primary content and someone performs it on screen or as the audio.
+  "product_demo" — the product and how it is used or what it does is the main subject.
+  "talking_head" — a person addresses the camera directly for most of the runtime.
+  "testimonial" — a person recounts their own experience with the product.
+  "lifestyle" — mood, scenery and daily-life moments; the product is incidental to the scene.
+  "tutorial" — the video teaches steps, a routine or a how-to.
+  "ugc" — casual, handheld, creator-style footage.
+  "animation" — animated or motion graphics with no live footage.
+  "other" — none of the above fit.
+
+"product_role": how present the product is. Exactly one of "hero" (the product is the main subject and on screen most of the time), "featured" (it has a clear moment but is not the subject throughout), "incidental" (it appears briefly or as a prop), "absent" (it never appears on screen).
+
+"format_note": one sentence explaining the classification, naming who is on screen and what they are doing in relation to the brand. Example: "Original song performed by the artist on screen; the lotion appears as a prop in the closing scene." If someone sings, say so here and do not describe the singing as speech.
+
+"hook": 1-2 sentences describing the opening hook — what grabs attention in the first two seconds.
+
+"timeline": an array of ${n ? `exactly ${n}` : ''} objects, one per ${step}-second window, covering the whole video from 0 to the end with no gaps. Each object:
+  { "t": <window start in seconds, a multiple of ${step}>,
+    "d": "<one sentence, present tense, describing what is on screen and what is said or heard in that window>" }
+Cover EVERY window in order. Do NOT merge, skip or group windows — a window where little happens still gets its own entry saying so. ${n ? `The array must contain ${n} entries: t = 0, ${step}, ${step * 2}, and so on up to ${(n - 1) * step}.` : ''} If a window is visually similar to the one before, say what changed rather than repeating the text. Name what matters for performance: who is on screen, what they do, on-screen text, product visibility, scene cuts, and audio or voiceover. When someone speaks or sings, write the actual words as close to verbatim as you can make out — do not just note that speech or a voiceover is happening. If a word is genuinely unclear, give your best guess followed by a question mark rather than skip it.
+
+TRANSCRIBE IN THE LANGUAGE SPOKEN. Sri Lankan content is often in Sinhala or Tamil, sometimes mixed with English in the same line. Write the words in the language they are sung or spoken in, using that language's own script, and do not translate them. Never leave words out because they are not in English.
+
+LYRICS COUNT AS SPEECH. In a music video the lyrics are the content, so a window over a sung line must contain that line. Descriptions like "she sings into a microphone", "the chorus plays" or "rap section performed" without the words are not acceptable on their own — the words are what is being asked for. Instrumental passages with no vocals are the one exception; say so plainly for those windows.
+
+Return only the JSON object. No markdown, no commentary.`;
+}
+
+// ── Step 1: CDN link ──────────────────────────────────────────────────────────
+async function resolveMediaUrl(mediaUrl) {
+  if (!process.env.RAPIDAPI_KEY) throw new Error('RAPIDAPI_KEY is not set.');
+
+  const { data } = await axios.request({
+    method: 'GET',
+    url: `https://${RAPIDAPI_HOST}/fetch`,
+    params: { url: mediaUrl },
+    headers: {
+      'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+      'X-RapidAPI-Host': RAPIDAPI_HOST,
+    },
+    timeout: 60000,
+  });
+
+  // The API returns HTTP 200 with ok:false on failure, so the status code
+  // alone is not enough to tell success from failure.
+  if (!data || data.ok === false) {
+    throw new Error(`API rejected the link: ${(data && (data.error || data.message)) || 'unknown reason'}`);
+  }
+  if (!data.download_url) throw new Error('API returned no download_url.');
+  return data;
+}
+
+// ── Step 2: download ──────────────────────────────────────────────────────────
+async function streamToFile(url, destPath) {
+  // CDN links are signed and short-lived, and Instagram's fbcdn rejects
+  // requests without a browser-ish user agent.
+  const res = await axios({
+    url, method: 'GET', responseType: 'stream',
+    timeout: 180000, maxRedirects: 5,
+    headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36' },
+  });
+
+  await new Promise((resolve, reject) => {
+    const writer = fs.createWriteStream(destPath);
+    res.data.pipe(writer);
+    writer.on('finish', resolve);
+    writer.on('error', err => {
+      try { if (fs.existsSync(destPath)) fs.unlinkSync(destPath); } catch (e) {}
+      reject(err);
+    });
+  });
+
+  const { size } = fs.statSync(destPath);
+  if (size < 10240) {
+    fs.unlinkSync(destPath);
+    throw new Error('Downloaded file was too small to be a video.');
+  }
+  return destPath;
+}
+
+// ── Steps 3-4: Gemini ─────────────────────────────────────────────────────────
+async function analyseVideo(ai, videoPath, hintDuration) {
+  const geminiFile = await ai.files.upload({ file: videoPath, mimeType: 'video/mp4' });
+  try {
+    let state = await ai.files.get({ name: geminiFile.name });
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (state.state === 'PROCESSING') {
+      if (Date.now() > deadline) throw new Error('Gemini processing timed out after 5 minutes.');
+      await new Promise(r => setTimeout(r, 3000));
+      state = await ai.files.get({ name: geminiFile.name });
+    }
+    if (state.state === 'FAILED') {
+      // Gemini returns a reason on the file object. Without it every failure
+      // reads the same in the notification, so a transient backend wobble is
+      // indistinguishable from an unsupported codec.
+      const e = state.error || {};
+      const why = e.message || e.reason || (Object.keys(e).length ? JSON.stringify(e) : 'no reason given');
+      throw new Error(`Gemini processing failed: ${why}`);
+    }
+
+    const result = await ai.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: [{ role: 'user', parts: [
+        {
+          fileData: { fileUri: geminiFile.uri, mimeType: 'video/mp4' },
+          ...(MEDIA_RESOLUTION
+            ? { videoMetadata: { mediaResolution: `MEDIA_RESOLUTION_${MEDIA_RESOLUTION.toUpperCase()}` } }
+            : {}),
+        },
+        { text: buildPrompt(hintDuration) },
+      ]}],
+      // A 90s video at 2s granularity is ~45 timeline entries plus the four
+      // quartile segments, and thinking tokens count toward this ceiling.
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: RESPONSE_SCHEMA,
+        maxOutputTokens: 16000,
+        ...(THINKING_BUDGET !== null && Number.isFinite(THINKING_BUDGET)
+          ? { thinkingConfig: { thinkingBudget: THINKING_BUDGET } }
+          : {}),
+      },
+    });
+    // Log real token usage. Thinking tokens bill at output rates and are the
+    // hardest part of the cost to predict, so measure rather than estimate.
+    const u = result.usageMetadata || {};
+    const inTok = u.promptTokenCount || 0;
+    const outTok = u.candidatesTokenCount || 0;
+    const think = u.thoughtsTokenCount || 0;
+    const IN_RATE = Number(process.env.GEMINI_IN_RATE || 0.75) / 1e6;
+    const OUT_RATE = Number(process.env.GEMINI_OUT_RATE || 3.75) / 1e6;
+    const usage = {
+      model: GEMINI_MODEL,
+      input_tokens: inTok,
+      output_tokens: outTok,
+      thinking_tokens: think,
+      total_tokens: u.totalTokenCount || (inTok + outTok + think),
+      // Thinking tokens bill at output rates.
+      cost_usd: Number((inTok * IN_RATE + (outTok + think) * OUT_RATE).toFixed(6)),
+    };
+    if (inTok || outTok) {
+      console.log(`[gemini] model=${usage.model} in=${inTok} out=${outTok} thinking=${think} ` +
+                  `total=${usage.total_tokens} cost=$${usage.cost_usd.toFixed(4)}`);
+    }
+
+    const parsed = JSON.parse(result.text.replace(/```json|```/g, '').trim());
+    // Non-enumerable so it rides along for callers that want it without ever
+    // showing up in JSON.stringify of the analysis itself.
+    Object.defineProperty(parsed, '_usage', { value: usage, enumerable: false });
+    return parsed;
+  } finally {
+    try { await ai.files.delete({ name: geminiFile.name }); } catch (e) {}
+  }
+}
+
+/**
+ * Models drift on shape: t may come back as "0", "0s" or "00:04", and windows
+ * can arrive out of order or duplicated. Normalise to { t: <number>, d: <string> }
+ * sorted and de-duplicated, so anything reading this can trust the grid.
+ */
+function normaliseTimeline(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  const out = [];
+
+  for (const item of raw) {
+    if (!item) continue;
+    const d = String(item.d || item.desc || item.description || '').trim();
+    if (!d) continue;
+
+    let t = item.t !== undefined ? item.t : (item.start !== undefined ? item.start : item.time);
+    if (typeof t === 'string') {
+      const mmss = t.match(/^(\d+):(\d+(?:\.\d+)?)$/);
+      t = mmss ? Number(mmss[1]) * 60 + Number(mmss[2]) : parseFloat(t.replace(/[^\d.]/g, ''));
+    }
+    t = Number(t);
+    if (!Number.isFinite(t) || t < 0) continue;
+
+    t = Math.round(t * 10) / 10;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push({ t, d });
+  }
+
+  out.sort((x, y) => x.t - y.t);
+  // No hard slice: stepFor already bounds the count, and truncating here
+  // would silently drop the end of a video the model described correctly.
+  return out;
+}
+
+// ── The job ───────────────────────────────────────────────────────────────────
+function makeProcessor(ai) {
+  return async function processJob(job) {
+    const d = job.data;
+    const { mediaUrl, creativeId, platform } = d;
+    let videoPath = null;
+
+    try {
+      await job.updateProgress({ step: 'resolving', pct: 10 });
+      const meta = await resolveMediaUrl(mediaUrl);
+
+      await job.updateProgress({ step: 'downloading', pct: 30 });
+      videoPath = path.join(os.tmpdir(), `creative_${job.id}.mp4`);
+      await streamToFile(meta.download_url, videoPath);
+
+      await job.updateProgress({ step: 'analysing', pct: 60 });
+      const a = await analyseVideo(ai, videoPath, typeof meta.duration === 'number' ? meta.duration : null);
+
+      // A partial analysis is not worth storing — the dashboard labels
+      // segments by position, so a missing one mislabels the rest.
+      if (!a.hook || !String(a.hook).trim()) {
+        throw new Error('Analysis incomplete — no hook returned.');
+      }
+
+      const timeline = normaliseTimeline(a.timeline);
+      if (!timeline.length) {
+        throw new Error('Analysis incomplete — no timeline returned.');
+      }
+
+      // Models save output tokens by grouping windows ("0:14-0:30: she keeps
+      // talking"). That returns valid JSON with a sparse timeline, which would
+      // otherwise be stored as if complete. Check coverage against duration
+      // and fail the job so the retry gets another go.
+      const durForCheck = (typeof meta.duration === 'number' && meta.duration > 0)
+        ? meta.duration
+        : (Number.isFinite(parseFloat(a.duration)) ? parseFloat(a.duration) : null);
+
+      if (durForCheck) {
+        const step = stepFor(durForCheck);
+        const expected = Math.ceil(durForCheck / step);
+        // 70%: allows a window or two of slack at the tail without accepting
+        // a timeline that has clearly been collapsed.
+        if (timeline.length < Math.floor(expected * 0.7)) {
+          throw new Error(
+            `Timeline too sparse — got ${timeline.length} windows for ${durForCheck.toFixed(0)}s, ` +
+            `expected about ${expected} at ${step}s. The model grouped intervals.`
+          );
+        }
+        const lastCovered = timeline[timeline.length - 1].t + step;
+        if (lastCovered < durForCheck * 0.8) {
+          throw new Error(
+            `Timeline stops at ${lastCovered.toFixed(0)}s of ${durForCheck.toFixed(0)}s — incomplete coverage.`
+          );
+        }
+      }
+
+      // Gemini estimates duration by watching, and that drives the retention
+      // denominator. Anything outside 1-600s is a bad read, not a long video.
+      // The API's own duration wins when it gives one: TikTok does, Instagram
+      // returns null.
+      const apiDur = typeof meta.duration === 'number' ? meta.duration : null;
+      const aiDur = parseFloat(a.duration);
+      const guess = apiDur !== null ? apiDur : (Number.isFinite(aiDur) ? aiDur : null);
+      const safeDur = guess !== null && guess >= 1 && guess <= 600 ? guess : null;
+
+      // Insert the complete row only now. Nothing reaches the database
+      // without descriptions, so a failed job leaves no half-creative behind.
+      await job.updateProgress({ step: 'saving', pct: 90 });
+      await query(
+        `insert into creatives
+           (creative_id, brand_id, date, campaign, type, is_repurposed,
+            original_creative_id, content_type, ig_link, fb_link, tt_link,
+            content_hook, duration_s, segments,
+            format, product_role, format_note, creator_profile, creator_id)
+         values ($1,$2,coalesce($3::date, current_date),$4,$5,$6,$7,'Video',
+                 $8,$9,$10,$11,$12,$13,
+                 $14,$15,$16,$17,$18)
+         on conflict (creative_id) do update set
+           content_hook = excluded.content_hook,
+           duration_s = coalesce(excluded.duration_s, creatives.duration_s),
+           segments = excluded.segments,
+           format = excluded.format,
+           product_role = excluded.product_role,
+           format_note = excluded.format_note`,
+        [creativeId, d.brand, d.date, d.campaign, d.type, d.repurposed,
+         d.originalId, d.ig, d.fb, d.tt,
+         a.hook, safeDur, JSON.stringify(timeline),
+         a.format || null, a.product_role || null, a.format_note || null,
+         d.creator || null, d.creatorId || null]
+      );
+
+      console.log(`[worker] ${creativeId}: analysed ${platform} (${safeDur === null ? '?' : safeDur}s, ${timeline.length} segments) and added`);
+
+      notifySuccess({
+        creativeId, brand: d.brand, campaign: d.campaign, platform,
+        duration: safeDur, hook: a.hook,
+        addedBy: d.addedBy, addedByName: d.addedByName, addedByEmail: d.addedByEmail,
+      }).catch(e => console.error('[worker] notify:', e.message));
+      return {
+        status: 'completed', creativeId, platform,
+        hook: a.hook || null,
+        timelineCount: timeline.length,
+        duration: safeDur,
+        caption: meta.caption || '',
+        thumbnail: meta.thumbnail_url || '',
+      };
+    } finally {
+      // Temp file only — nothing is served from disk, so there is no reason to
+      // keep it, and Render's filesystem is ephemeral anyway.
+      if (videoPath && fs.existsSync(videoPath)) {
+        try { fs.unlinkSync(videoPath); } catch (e) {}
+      }
+    }
+  };
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+function startWorker(ai) {
+  if (!process.env.REDIS_URL) {
+    console.log('[worker] REDIS_URL not set — worker not started.');
+    return null;
+  }
+  if (!ai) {
+    console.warn('[worker] No Gemini client available — jobs will fail at the analysis step.');
+  }
+
+  const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+  connection.on('error', e => console.error('[worker] redis:', e.message));
+
+  const worker = new Worker('creative-downloads', makeProcessor(ai), {
+    connection,
+    concurrency: Number(process.env.WORKER_CONCURRENCY || 2),
+    // A deploy kills the process mid-job. Without these, BullMQ treats the
+    // silence as a failed attempt and burns a retry on a job that was never
+    // actually broken. lockDuration must exceed the longest analysis; a
+    // 5-minute Gemini wait plus download and upload fits inside 10.
+    lockDuration: 10 * 60 * 1000,
+    stalledInterval: 30 * 1000,
+    maxStalledCount: 3,
+  });
+
+  // A job whose worker vanished is not a real failure: it never got to run.
+  worker.on('stalled', (jobId) => {
+    console.warn(`[worker] job ${jobId} stalled (worker restarted mid-job) — requeueing`);
+  });
+
+  worker.on('failed', (job, err) => {
+    if (!job) return;
+    const attempts = job.opts && job.opts.attempts ? job.opts.attempts : 1;
+    console.error(`[worker] job ${job.id} failed (attempt ${job.attemptsMade}/${attempts}): ${err.message}`);
+    // Only notify once the retries are exhausted — otherwise a transient
+    // rate-limit sends three emails for one creative.
+    if (job.attemptsMade >= attempts) {
+      notifyFailure({
+        creativeId: job.data.creativeId, brand: job.data.brand,
+        campaign: job.data.campaign, link: job.data.mediaUrl,
+        error: err.message, attempts,
+        addedByName: job.data.addedByName, addedByEmail: job.data.addedByEmail,
+      }).catch(e => console.error('[worker] notify:', e.message));
+    }
+  });
+  worker.on('completed', job => console.log(`[worker] job ${job.id} completed`));
+
+  attachShutdown(worker, connection);
+
+  console.log('[worker] active and listening for background download tasks');
+  return worker;
+}
+
+// ── Graceful shutdown ─────────────────────────────────────────────────────────
+// Render sends SIGTERM on every deploy and waits ~30s before SIGKILL. Without
+// a handler the process dies mid-job, the analysis is lost, and the attempt is
+// counted against the job's retries. worker.close() stops taking new work and
+// waits for what is already running, so a deploy during a batch costs a short
+// wait instead of failed creatives.
+function attachShutdown(worker, connection) {
+  let closing = false;
+  const shutdown = async (signal) => {
+    if (closing) return;
+    closing = true;
+    console.log(`[worker] ${signal} received — finishing in-flight jobs, no new ones accepted`);
+    try {
+      await worker.close();            // waits for active jobs
+      console.log('[worker] all in-flight jobs finished');
+    } catch (e) {
+      console.error('[worker] shutdown error:', e.message);
+    }
+    try { await connection.quit(); } catch (e) { /* redis already gone */ }
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+}
+
+module.exports = { startWorker, buildPrompt, normaliseTimeline, RESPONSE_SCHEMA };
+
+// Standalone mode: node worker.js
+if (require.main === module) {
+  const { GoogleGenAI } = require('@google/genai');
+  const ai = process.env.GEMINI_API_KEY
+    ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+    : null;
+  startWorker(ai);
+}
