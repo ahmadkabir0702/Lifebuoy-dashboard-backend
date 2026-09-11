@@ -48,6 +48,9 @@
   .rec-evidence { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:10px; }
   .rec-ts { font-size:11px; font-family:ui-monospace,Menlo,monospace; padding:2px 7px; border-radius:4px;
             background:#EEF1F6; color:#4A4A75; cursor:help; }
+  .ac-id-preview { font-size: 11px; color: #6B6B8A; margin-bottom: 10px; min-height: 14px;
+                   font-family: ui-monospace, Menlo, monospace; }
+  .ac-id-preview b { color: #000050; font-weight: 600; }
   /* Creative brief — scene timeline */
   .brief-tags { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
   .brief-tag { font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px;
@@ -282,6 +285,11 @@
        <form id="addCreativeForm" onsubmit="submitCreative(event)">
            <input type="date" id="ac-date" class="modal-input" style="margin-bottom:10px;" required>
            
+           <input type="text" id="ac-description" class="modal-input" style="margin-bottom:4px;"
+                  maxlength="20" placeholder="Short description (optional) — e.g. Shanudrie 6sec"
+                  oninput="previewCreativeId()">
+           <div id="ac-id-preview" class="ac-id-preview"></div>
+
            <select id="ac-campaign" class="modal-input" style="margin-bottom:10px;" required>
              <option value="" disabled selected>Select Campaign</option>
              </select>
@@ -383,7 +391,7 @@
 
           <div class="cf-group" id="creative-filters">
           <input type="text" id="search-filter" class="search-input"
-                 placeholder="Search ID or name" onkeyup="render()">
+                 placeholder="Search ID, name, creator, campaign or paste a post link" onkeyup="render()">
 
           <div class="platform-toggle">
             <div class="pt active" id="pt-both" onclick="setPlatform('both',this)">All</div>
